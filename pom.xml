@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Spring Boot 父工程 -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <!-- 当前整个项目 -->
+    <groupId>com.byy</groupId>
+    <artifactId>intelligent-meter-reading-system</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <!-- 非常重要：根工程只负责聚合，不生成 jar -->
+    <packaging>pom</packaging>
+
+    <name>intelligent-meter-reading-system</name>
+
+    <!-- Maven 子模块 -->
+    <modules>
+        <module>meter-bom</module>
+        <module>meter-common</module>
+        <module>meter-model</module>
+        <module>meter-service</module>
+        <module>meter-auth</module>
+        <module>meter-api</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- 引入项目 BOM -->
+            <dependency>
+                <groupId>com.byy</groupId>
+                <artifactId>meter-bom</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- 项目内部模块 -->
+            <dependency>
+                <groupId>com.byy</groupId>
+                <artifactId>meter-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.byy</groupId>
+                <artifactId>meter-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.byy</groupId>
+                <artifactId>meter-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.byy</groupId>
+                <artifactId>meter-auth</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+</project>
