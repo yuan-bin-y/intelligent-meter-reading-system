@@ -21,25 +21,21 @@
         <dependency>
             <groupId>com.byy</groupId>
             <artifactId>meter-common</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.byy</groupId>
             <artifactId>meter-model</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.byy</groupId>
             <artifactId>meter-service</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.byy</groupId>
             <artifactId>meter-auth</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
 

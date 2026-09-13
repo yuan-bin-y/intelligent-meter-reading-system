@@ -37,6 +37,7 @@
 
     <properties>
         <java.version>17</java.version>
+        <meter.version>0.0.1-SNAPSHOT</meter.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     <dependencyManagement>
@@ -46,7 +47,7 @@
             <dependency>
                 <groupId>com.byy</groupId>
                 <artifactId>meter-bom</artifactId>
-                <version>${project.version}</version>
+                <version>${meter.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -55,25 +56,25 @@
             <dependency>
                 <groupId>com.byy</groupId>
                 <artifactId>meter-common</artifactId>
-                <version>${project.version}</version>
+                <version>${meter.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>com.byy</groupId>
                 <artifactId>meter-model</artifactId>
-                <version>${project.version}</version>
+                <version>${meter.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>com.byy</groupId>
                 <artifactId>meter-service</artifactId>
-                <version>${project.version}</version>
+                <version>${meter.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>com.byy</groupId>
                 <artifactId>meter-auth</artifactId>
-                <version>${project.version}</version>
+                <version>${meter.version}</version>
             </dependency>
 
         </dependencies>

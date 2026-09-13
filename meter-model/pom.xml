@@ -19,7 +19,6 @@
         <dependency>
             <groupId>com.byy</groupId>
             <artifactId>meter-common</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <dependency>
