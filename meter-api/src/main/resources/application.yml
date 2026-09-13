@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: intelligent-meter-reading-system
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+server:
+  port: ${SERVER_PORT:8080}
