@@ -4,5 +4,12 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
 
+app:
+  security:
+    jwt:
+      issuer: ${JWT_ISSUER:meter-reading-system}
+      access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT2H}
+      secret-base64: ${JWT_SECRET_BASE64}
+
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8070}
