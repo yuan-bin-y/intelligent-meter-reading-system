@@ -25,9 +25,8 @@ public class RedisAuthSessionService {
      */
     private static final DefaultRedisScript<Long> ACTIVATE_SCRIPT =
             new DefaultRedisScript<>("""
-                    redis.call('HSET', KEYS[1],
-                            'userId', ARGV[1],
-                            'refreshJti', ARGV[2])
+                    redis.call('HSET', KEYS[1], 'userId', ARGV[1])
+                    redis.call('HSET', KEYS[1], 'refreshJti', ARGV[2])
                     redis.call('PEXPIRE', KEYS[1], ARGV[3])
                     redis.call('SADD', KEYS[2], ARGV[4])
                     redis.call('PEXPIRE', KEYS[2], ARGV[3])

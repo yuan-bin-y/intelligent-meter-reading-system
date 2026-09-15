@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统认证接口
-  description: 当前认证模块的 Apifox 测试文档，包含注册、登录、获取当前登录用户和修改密码接口。
-  version: 1.3.0
+  description: 当前认证模块的 Apifox 测试文档，包含注册、双 Token 登录、Token 刷新、退出登录、获取当前用户和修改密码接口。
+  version: 1.4.0
 
 servers:
   - url: http://localhost:8070
@@ -88,7 +88,7 @@ paths:
       tags:
         - 认证
       summary: 用户登录
-      description: 使用用户名和密码完成认证，成功后返回 JWT Access Token。
+      description: 使用用户名和密码完成认证，成功后返回 JWT Access Token 和 Refresh Token，并在 Redis 中创建登录会话。
       operationId: login
       security: []
       requestBody:
@@ -111,9 +111,11 @@ paths:
                 code: OK
                 message: success
                 data:
-                  accessToken: eyJhbGciOiJIUzI1NiJ9.example.signature
+                  accessToken: eyJhbGciOiJIUzI1NiJ9.access.signature
+                  refreshToken: eyJhbGciOiJIUzI1NiJ9.refresh.signature
                   tokenType: Bearer
                   expiresIn: 7200
+                  refreshExpiresIn: 604800
                   userId: 2
                   username: admin
                   displayName: 系统管理员
@@ -141,6 +143,118 @@ paths:
               example:
                 code: AUTH_FAILED
                 message: 用户名或密码错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: INTERNAL_ERROR
+                message: 服务器内部错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - 认证
+      summary: 刷新 Token
+      description: 使用有效的 Refresh Token 原子轮换 Redis 中的 refreshJti，并返回一组新的 Access Token 和 Refresh Token。旧 Refresh Token 立即失效。
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenDTO'
+            example:
+              refreshToken: eyJhbGciOiJIUzI1NiJ9.refresh.signature
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  accessToken: eyJhbGciOiJIUzI1NiJ9.new-access.signature
+                  refreshToken: eyJhbGciOiJIUzI1NiJ9.new-refresh.signature
+                  tokenType: Bearer
+                  expiresIn: 7200
+                  refreshExpiresIn: 604800
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+              example:
+                code: BAD_REQUEST
+                message: 请求参数不正确
+                data:
+                  refreshToken: Refresh Token 不能为空
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: Refresh Token 无效、过期、已被使用或登录会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: AUTH_REQUIRED
+                message: 请先登录
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: INTERNAL_ERROR
+                message: 服务器内部错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - 认证
+      summary: 退出当前登录会话
+      description: 根据 Access Token 中的 userId 和 sid 删除当前设备的 Redis 会话，使该会话的 Access Token 和 Refresh Token 同时失效。
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+              example:
+                code: OK
+                message: success
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未携带 Access Token、Token 无效、Token 已过期或登录会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: AUTH_REQUIRED
+                message: 请先登录
                 data: null
                 traceId: 01JEXAMPLETRACEID
         '500':
@@ -220,7 +334,7 @@ paths:
       tags:
         - 认证
       summary: 修改当前用户密码
-      description: 根据 Bearer JWT 确定当前用户，验证原密码后保存新密码的 BCrypt 哈希。
+      description: 根据 Bearer JWT 确定当前用户，验证原密码后保存新密码的 BCrypt 哈希，并清除该用户全部 Redis 登录会话。
       operationId: changePassword
       security:
         - bearerAuth: []
@@ -235,7 +349,7 @@ paths:
               newPassword: newPassword123
       responses:
         '200':
-          description: 密码修改成功
+          description: 密码修改成功，当前用户所有设备均需重新登录
           content:
             application/json:
               schema:
@@ -350,6 +464,67 @@ components:
           type: string
           description: 本次请求的追踪标识
 
+    RefreshTokenDTO:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          maxLength: 4096
+          description: 登录或上一次刷新接口返回的 Refresh Token
+
+    RefreshTokenVO:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+        - expiresIn
+        - refreshExpiresIn
+      properties:
+        accessToken:
+          type: string
+          description: 新的 JWT Access Token
+        refreshToken:
+          type: string
+          description: 新的 JWT Refresh Token，旧 Refresh Token 已失效
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          description: Access Token 剩余有效时间，单位为秒
+          example: 7200
+        refreshExpiresIn:
+          type: integer
+          format: int64
+          description: Refresh Token 剩余有效时间，单位为秒
+          example: 604800
+
+    RefreshTokenSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/RefreshTokenVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     RegisterDTO:
       type: object
       required:
@@ -444,8 +619,10 @@ components:
       type: object
       required:
         - accessToken
+        - refreshToken
         - tokenType
         - expiresIn
+        - refreshExpiresIn
         - userId
         - username
         - displayName
@@ -454,6 +631,9 @@ components:
         accessToken:
           type: string
           description: JWT Access Token
+        refreshToken:
+          type: string
+          description: JWT Refresh Token，仅用于调用刷新接口
         tokenType:
           type: string
           enum:
@@ -461,8 +641,13 @@ components:
         expiresIn:
           type: integer
           format: int64
-          description: Token 剩余有效时间，单位为秒
+          description: Access Token 剩余有效时间，单位为秒
           example: 7200
+        refreshExpiresIn:
+          type: integer
+          format: int64
+          description: Refresh Token 剩余有效时间，单位为秒
+          example: 604800
         userId:
           type: integer
           format: int64
