@@ -1,10 +1,18 @@
 package com.byy.meterreading.auth.config;
 
 import com.byy.meterreading.auth.token.JwtProperties;
+import com.byy.meterreading.auth.token.JwtTokenService;
+import com.byy.meterreading.auth.token.RedisTokenValidator;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -62,12 +70,14 @@ public class JwtConfig {
 
     /**
      * 使用签发时的同一把对称密钥创建 JWT 解码器。
-     * 解码器负责验证 HS256 签名、Token 有效期和签发方。
+     * 解码器负责验证 HS256 签名、Token 有效期、签发方和 Redis 会话。
      */
     @Bean
+    @Primary
     public JwtDecoder jwtDecoder(
             SecretKey jwtSecretKey,
-            JwtProperties properties
+            JwtProperties properties,
+            RedisTokenValidator redisTokenValidator
     ) {
         // 1. 使用同一把密钥和 HS256 算法验证 JWT 签名
         NimbusJwtDecoder jwtDecoder =
@@ -75,11 +85,59 @@ public class JwtConfig {
                         .macAlgorithm(MacAlgorithm.HS256)
                         .build();
 
-        // 2. 在默认时间校验基础上增加 issuer 校验
+        // 2. 组合默认时间、issuer 和 Redis 登录会话校验
         jwtDecoder.setJwtValidator(
-                JwtValidators.createDefaultWithIssuer(properties.issuer())
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefaultWithIssuer(
+                                properties.issuer()
+                        ),
+                        redisTokenValidator
+                )
         );
 
         return jwtDecoder;
+    }
+
+    /**
+     * 创建 Refresh Token 专用解码器，只校验签名、时间、签发方和 Token 类型。
+     * Redis 中 refreshJti 的比较和轮换由刷新业务原子完成。
+     */
+    @Bean("refreshTokenDecoder")
+    public JwtDecoder refreshTokenDecoder(
+            SecretKey jwtSecretKey,
+            JwtProperties properties
+    ) {
+        NimbusJwtDecoder refreshTokenDecoder =
+                NimbusJwtDecoder.withSecretKey(jwtSecretKey)
+                        .macAlgorithm(MacAlgorithm.HS256)
+                        .build();
+
+        OAuth2TokenValidator<Jwt> refreshTokenTypeValidator = jwt -> {
+            String tokenType = jwt.getClaimAsString(
+                    JwtTokenService.CLAIM_TOKEN_TYPE
+            );
+            if (JwtTokenService.TOKEN_TYPE_REFRESH.equals(tokenType)) {
+                return OAuth2TokenValidatorResult.success();
+            }
+
+            return OAuth2TokenValidatorResult.failure(
+                    new OAuth2Error(
+                            "invalid_token",
+                            "Token 类型不是 refresh",
+                            null
+                    )
+            );
+        };
+
+        refreshTokenDecoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefaultWithIssuer(
+                                properties.issuer()
+                        ),
+                        refreshTokenTypeValidator
+                )
+        );
+
+        return refreshTokenDecoder;
     }
 }

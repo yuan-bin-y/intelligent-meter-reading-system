@@ -9,6 +9,7 @@ app:
     jwt:
       issuer: ${JWT_ISSUER:meter-reading-system}
       access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT2H}
+      refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
       secret-base64: ${JWT_SECRET_BASE64}
 
 server:

@@ -2,25 +2,34 @@ package com.byy.meterreading.auth.service.impl;
 
 import com.byy.meterreading.auth.security.CustomUserDetails;
 import com.byy.meterreading.auth.service.AuthService;
+import com.byy.meterreading.auth.token.IssuedTokenPair;
 import com.byy.meterreading.auth.token.JwtTokenService;
+import com.byy.meterreading.auth.token.RedisAuthSessionService;
 import com.byy.meterreading.dto.auth.ChangePasswordDTO;
 import com.byy.meterreading.dto.auth.LoginDTO;
+import com.byy.meterreading.dto.auth.RefreshTokenDTO;
 import com.byy.meterreading.dto.auth.RegisterDTO;
 import com.byy.meterreading.model.SysRole;
 import com.byy.meterreading.model.SysUser;
 import com.byy.meterreading.service.SysUserService;
 import com.byy.meterreading.vo.auth.CurrentUserVO;
 import com.byy.meterreading.vo.auth.LoginVO;
+import com.byy.meterreading.vo.auth.RefreshTokenVO;
 import com.byy.meterreading.vo.auth.RegisterVO;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -31,15 +40,22 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenService jwtTokenService;
+    private final JwtDecoder refreshTokenDecoder;
+    private final RedisAuthSessionService redisAuthSessionService;
     private final SysUserService sysUserService;
     private final PasswordEncoder passwordEncoder;
 
     public AuthServiceImpl(AuthenticationManager authenticationManager,
                            JwtTokenService jwtTokenService,
+                           @Qualifier("refreshTokenDecoder")
+                           JwtDecoder refreshTokenDecoder,
+                           RedisAuthSessionService redisAuthSessionService,
                            SysUserService sysUserService,
                            PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.jwtTokenService = jwtTokenService;
+        this.refreshTokenDecoder = refreshTokenDecoder;
+        this.redisAuthSessionService = redisAuthSessionService;
         this.sysUserService = sysUserService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -70,19 +86,114 @@ public class AuthServiceImpl implements AuthService {
         String displayName = userDetails.getDisplayName();
         List<String> roles = userDetails.getRoles();
 
-        // 5. 调用 JwtTokenService 签发 JWT
-        String accessToken = jwtTokenService.generate(userDetails);
-        long expiresIn = jwtTokenService.getExpiresIn();
+        // 5. 为本次登录签发属于同一个 sid 的 Access Token 和 Refresh Token
+        IssuedTokenPair tokenPair = jwtTokenService.issue(userDetails);
 
-        // 6. 统一组装 LoginVO 并返回
+        // 6. Redis 会话需要覆盖完整的 Refresh Token 有效期
+        redisAuthSessionService.activate(
+                userId,
+                tokenPair.sessionId(),
+                tokenPair.refreshTokenId(),
+                Duration.ofSeconds(tokenPair.refreshExpiresIn())
+        );
+
+        // 7. 统一组装包含双 Token 的 LoginVO 并返回
         return new LoginVO(
-                accessToken,
+                tokenPair.accessToken(),
+                tokenPair.refreshToken(),
                 "Bearer",
-                expiresIn,
+                tokenPair.accessExpiresIn(),
+                tokenPair.refreshExpiresIn(),
                 userId,
                 username,
                 displayName,
                 roles
+        );
+    }
+
+    // 校验并轮换 Refresh Token
+    @Override
+    public RefreshTokenVO refresh(RefreshTokenDTO refreshTokenDTO) {
+        // 1. 使用 Refresh Token 专用 Decoder 校验签名、时间、issuer 和 Token 类型
+        Jwt refreshJwt;
+        try {
+            refreshJwt = refreshTokenDecoder.decode(
+                    refreshTokenDTO.refreshToken()
+            );
+        } catch (JwtException exception) {
+            throw new AuthenticationCredentialsNotFoundException(
+                    "Refresh Token 无效或已过期",
+                    exception
+            );
+        }
+
+        // 2. 从验证通过的 Refresh Token 中获取用户、会话和旧 Token 标识
+        Object userIdClaim = refreshJwt.getClaim("userId");
+        String sessionId = refreshJwt.getClaimAsString(
+                JwtTokenService.CLAIM_SESSION_ID
+        );
+        String oldRefreshTokenId = refreshJwt.getId();
+        if (!(userIdClaim instanceof Number userId)
+                || sessionId == null
+                || sessionId.isBlank()
+                || oldRefreshTokenId == null
+                || oldRefreshTokenId.isBlank()) {
+            throw new AuthenticationCredentialsNotFoundException(
+                    "Refresh Token 缺少有效的会话信息"
+            );
+        }
+
+        Long currentUserId = userId.longValue();
+
+        // 3. 查询数据库中的最新用户，账号不存在或禁用时拒绝续期
+        SysUser user = sysUserService.findById(currentUserId);
+        if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
+            redisAuthSessionService.revoke(currentUserId, sessionId);
+            throw new AuthenticationCredentialsNotFoundException(
+                    "当前登录用户不存在或已被禁用"
+            );
+        }
+
+        // 4. 重新查询角色，使新 Access Token 使用数据库中的最新权限
+        List<String> roles =
+                sysUserService.findRoleCodesByUserId(currentUserId);
+        CustomUserDetails userDetails = new CustomUserDetails(
+                user.getId(),
+                user.getUsername(),
+                null,
+                user.getDisplayName(),
+                user.getStatus(),
+                roles
+        );
+
+        // 5. 保留当前 sid，生成新的 Access Token 和 Refresh Token
+        IssuedTokenPair tokenPair =
+                jwtTokenService.rotate(userDetails, sessionId);
+
+        // 6. 原子比较旧 refreshJti 并替换为新值，同时刷新会话有效期
+        boolean rotated = redisAuthSessionService.rotateRefreshToken(
+                currentUserId,
+                sessionId,
+                oldRefreshTokenId,
+                tokenPair.refreshTokenId(),
+                Duration.ofSeconds(tokenPair.refreshExpiresIn())
+        );
+
+        // 7. 旧 Refresh Token 被重复使用时撤销整个当前登录会话
+        if (!rotated) {
+            redisAuthSessionService.revoke(currentUserId, sessionId);
+            throw new AuthenticationCredentialsNotFoundException(
+                    "Refresh Token 已失效，请重新登录"
+            );
+        }
+
+        // 8. 返回轮换后的一组新 Token
+        return new RefreshTokenVO(
+                tokenPair.accessToken(),
+                tokenPair.refreshToken(),
+                "Bearer",
+                tokenPair.accessExpiresIn(),
+                tokenPair.refreshExpiresIn()
         );
     }
 

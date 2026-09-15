@@ -4,9 +4,11 @@ import com.byy.meterreading.auth.service.AuthService;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.auth.ChangePasswordDTO;
 import com.byy.meterreading.dto.auth.LoginDTO;
+import com.byy.meterreading.dto.auth.RefreshTokenDTO;
 import com.byy.meterreading.dto.auth.RegisterDTO;
 import com.byy.meterreading.vo.auth.CurrentUserVO;
 import com.byy.meterreading.vo.auth.LoginVO;
+import com.byy.meterreading.vo.auth.RefreshTokenVO;
 import com.byy.meterreading.vo.auth.RegisterVO;
 import jakarta.validation.Valid;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -47,6 +49,18 @@ public class AuthController {
     ) {
         RegisterVO registerVO = authService.register(registerDTO);
         return Result.success(registerVO);
+    }
+
+    /**
+     * 使用有效的 Refresh Token 轮换并返回一组新 Token。
+     */
+    @PostMapping("/refresh")
+    public Result<RefreshTokenVO> refresh(
+            @Valid @RequestBody RefreshTokenDTO refreshTokenDTO
+    ) {
+        RefreshTokenVO refreshTokenVO =
+                authService.refresh(refreshTokenDTO);
+        return Result.success(refreshTokenVO);
     }
 
     /**
