@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统认证接口
-  description: 当前登录认证模块的 Apifox 测试文档。
-  version: 1.0.0
+  description: 当前认证模块的 Apifox 测试文档，包含登录和获取当前登录用户接口。
+  version: 1.1.0
 
 servers:
   - url: http://localhost:8070
@@ -10,7 +10,7 @@ servers:
 
 tags:
   - name: 认证
-    description: 用户登录认证接口
+    description: 用户登录及登录身份查询接口
 
 paths:
   /api/v1/auth/login:
@@ -71,6 +71,66 @@ paths:
               example:
                 code: AUTH_FAILED
                 message: 用户名或密码错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: INTERNAL_ERROR
+                message: 服务器内部错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
+  /api/v1/auth/me:
+    get:
+      tags:
+        - 认证
+      summary: 获取当前登录用户
+      description: 校验请求中的 JWT，并根据 Token 内的用户 ID 查询数据库中的最新用户信息和角色。
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 2
+                  username: admin
+                  displayName: 系统管理员
+                  roles:
+                    - ADMIN
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未携带 Token、Token 无效、Token 已过期或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: AUTH_REQUIRED
+                message: 请先登录
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '403':
+          description: 当前登录用户无权访问资源
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: FORBIDDEN
+                message: 无权限访问
                 data: null
                 traceId: 01JEXAMPLETRACEID
         '500':
@@ -171,6 +231,56 @@ components:
           type: string
           description: 本次请求的追踪标识
 
+    CurrentUserVO:
+      type: object
+      required:
+        - userId
+        - username
+        - displayName
+        - roles
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 当前登录用户 ID
+          example: 2
+        username:
+          type: string
+          description: 登录用户名
+          example: admin
+        displayName:
+          type: string
+          description: 用户显示名称
+          example: 系统管理员
+        roles:
+          type: array
+          description: 当前用户拥有的角色编码
+          items:
+            type: string
+          example:
+            - ADMIN
+
+    CurrentUserSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/CurrentUserVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     ValidationErrorResult:
       type: object
       required:
@@ -198,6 +308,7 @@ components:
       required:
         - code
         - message
+        - data
         - traceId
       properties:
         code:
@@ -207,6 +318,7 @@ components:
           type: string
           example: 用户名或密码错误
         data:
+          type: object
           nullable: true
           description: 错误响应时为 null
         traceId:

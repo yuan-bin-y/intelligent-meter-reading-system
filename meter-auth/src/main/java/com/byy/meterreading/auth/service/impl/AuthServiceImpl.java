@@ -4,7 +4,11 @@ import com.byy.meterreading.auth.security.CustomUserDetails;
 import com.byy.meterreading.auth.service.AuthService;
 import com.byy.meterreading.auth.token.JwtTokenService;
 import com.byy.meterreading.dto.auth.LoginDTO;
+import com.byy.meterreading.model.SysUser;
+import com.byy.meterreading.service.SysUserService;
+import com.byy.meterreading.vo.auth.CurrentUserVO;
 import com.byy.meterreading.vo.auth.LoginVO;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -17,13 +21,17 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenService jwtTokenService;
+    private final SysUserService sysUserService;
 
     public AuthServiceImpl(AuthenticationManager authenticationManager,
-                           JwtTokenService jwtTokenService) {
+                           JwtTokenService jwtTokenService,
+                           SysUserService sysUserService) {
         this.authenticationManager = authenticationManager;
         this.jwtTokenService = jwtTokenService;
+        this.sysUserService = sysUserService;
     }
 
+    //用户登录
     @Override
     public LoginVO login(LoginDTO loginDTO) {
         // 1. 接收 LoginDTO
@@ -61,6 +69,32 @@ public class AuthServiceImpl implements AuthService {
                 userId,
                 username,
                 displayName,
+                roles
+        );
+    }
+
+    //获取用户身份
+    @Override
+    public CurrentUserVO getCurrentUser(Long userId) {
+        // 1. 根据 JWT 中的用户 ID 查询数据库中的最新用户信息
+        SysUser user = sysUserService.findById(userId);
+
+        // 2. 用户不存在或已被禁用时，使当前登录状态失效
+        if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
+            throw new AuthenticationCredentialsNotFoundException(
+                    "当前登录用户不存在或已被禁用"
+            );
+        }
+
+        // 3. 查询当前仍处于启用状态的角色编码
+        List<String> roles =
+                sysUserService.findRoleCodesByUserId(user.getId());
+
+        // 4. 组装当前登录用户信息并返回
+        return new CurrentUserVO(
+                user.getId(),
+                user.getUsername(),
+                user.getDisplayName(),
                 roles
         );
     }

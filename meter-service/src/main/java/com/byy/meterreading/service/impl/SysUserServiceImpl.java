@@ -21,6 +21,12 @@ public class SysUserServiceImpl implements SysUserService {
         this.sysRoleMapper = sysRoleMapper;
     }
 
+    // 根据用户 ID 查询用户，使用 MyBatis-Plus 单表主键查询
+    @Override
+    public SysUser findById(Long userId) {
+        return sysUserMapper.selectById(userId);
+    }
+
     //查用户名
     @Override
     public SysUser findByUsername(String username) {
