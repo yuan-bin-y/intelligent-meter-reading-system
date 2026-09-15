@@ -304,6 +304,9 @@ public class AuthServiceImpl implements AuthService {
                     "当前登录用户不存在或已被禁用"
             );
         }
+
+        // 8. 密码修改成功后清除该用户全部设备的登录会话
+        redisAuthSessionService.revokeAll(userId);
     }
 
     //获取用户身份
