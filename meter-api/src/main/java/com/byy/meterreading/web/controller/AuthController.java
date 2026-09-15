@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.controller;
 
 import com.byy.meterreading.auth.service.AuthService;
+import com.byy.meterreading.auth.token.JwtTokenService;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.auth.ChangePasswordDTO;
 import com.byy.meterreading.dto.auth.LoginDTO;
@@ -64,6 +65,18 @@ public class AuthController {
     }
 
     /**
+     * 退出当前设备，撤销 Access Token 和 Refresh Token 所属的整个登录会话。
+     */
+    @PostMapping("/logout")
+    public Result<Void> logout(@AuthenticationPrincipal Jwt jwt) {
+        authService.logout(
+                extractUserId(jwt),
+                extractSessionId(jwt)
+        );
+        return Result.success(null);
+    }
+
+    /**
      * 获取当前登录用户的最新资料和角色。
      */
     @GetMapping("/me")
@@ -101,5 +114,20 @@ public class AuthController {
             );
         }
         return userId.longValue();
+    }
+
+    /**
+     * 从已经通过校验的 Access Token 中提取当前登录会话 sid。
+     */
+    private String extractSessionId(Jwt jwt) {
+        String sessionId = jwt.getClaimAsString(
+                JwtTokenService.CLAIM_SESSION_ID
+        );
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new AuthenticationCredentialsNotFoundException(
+                    "JWT 中缺少有效的 sid"
+            );
+        }
+        return sessionId;
     }
 }

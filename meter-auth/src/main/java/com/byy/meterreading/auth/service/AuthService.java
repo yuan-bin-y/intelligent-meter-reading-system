@@ -27,6 +27,11 @@ public interface AuthService {
     RefreshTokenVO refresh(RefreshTokenDTO refreshTokenDTO);
 
     /**
+     * 撤销当前设备对应的登录会话。
+     */
+    void logout(Long userId, String sessionId);
+
+    /**
      * 修改当前登录用户的密码。
      */
     void changePassword(

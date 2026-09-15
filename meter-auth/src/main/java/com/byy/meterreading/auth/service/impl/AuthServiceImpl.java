@@ -197,6 +197,12 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
+    // 退出当前设备对应的整个登录会话
+    @Override
+    public void logout(Long userId, String sessionId) {
+        redisAuthSessionService.revoke(userId, sessionId);
+    }
+
     // 注册用户并绑定默认的居民角色
     @Override
     @Transactional
