@@ -100,9 +100,13 @@ public class SecurityConfig {
                 // 注册用户名密码认证器，供登录流程使用
                 .authenticationProvider(daoAuthenticationProvider)
 
-                // 登录接口允许匿名访问，其他接口必须完成认证
+                // 登录和注册接口允许匿名访问，其他接口必须完成认证
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(
+                                POST,
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/register"
+                        ).permitAll()
                         .anyRequest().authenticated())
 
                 // 将未认证和无权限异常转换为项目统一响应结构

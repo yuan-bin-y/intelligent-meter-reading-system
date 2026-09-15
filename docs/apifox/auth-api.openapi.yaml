@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统认证接口
-  description: 当前认证模块的 Apifox 测试文档，包含登录和获取当前登录用户接口。
-  version: 1.1.0
+  description: 当前认证模块的 Apifox 测试文档，包含注册、登录、获取当前登录用户和修改密码接口。
+  version: 1.3.0
 
 servers:
   - url: http://localhost:8070
@@ -10,9 +10,79 @@ servers:
 
 tags:
   - name: 认证
-    description: 用户登录及登录身份查询接口
+    description: 用户注册、登录、身份查询和密码管理接口
 
 paths:
+  /api/v1/auth/register:
+    post:
+      tags:
+        - 认证
+      summary: 用户注册
+      description: 创建启用状态的新用户，并自动分配 RESIDENT 角色；注册成功后需调用登录接口获取 JWT。
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDTO'
+            example:
+              username: resident01
+              password: '12345678'
+              displayName: 张三
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 3
+                  username: resident01
+                  displayName: 张三
+                  roles:
+                    - RESIDENT
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+              example:
+                code: BAD_REQUEST
+                message: 请求参数不正确
+                data:
+                  password: 密码长度必须为8到128个字符
+                traceId: 01JEXAMPLETRACEID
+        '409':
+          description: 用户名已经存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_CONFLICT
+                message: 用户名已存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: INTERNAL_ERROR
+                message: 服务器内部错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
   /api/v1/auth/login:
     post:
       tags:
@@ -145,6 +215,90 @@ paths:
                 data: null
                 traceId: 01JEXAMPLETRACEID
 
+  /api/v1/auth/password:
+    put:
+      tags:
+        - 认证
+      summary: 修改当前用户密码
+      description: 根据 Bearer JWT 确定当前用户，验证原密码后保存新密码的 BCrypt 哈希。
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordDTO'
+            example:
+              oldPassword: '12345678'
+              newPassword: newPassword123
+      responses:
+        '200':
+          description: 密码修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+              example:
+                code: OK
+                message: success
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 参数校验失败、原密码错误或新旧密码相同
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+              examples:
+                validationFailed:
+                  summary: 新密码长度不正确
+                  value:
+                    code: BAD_REQUEST
+                    message: 请求参数不正确
+                    data:
+                      newPassword: 密码长度必须为8到128个字符
+                    traceId: 01JEXAMPLETRACEID
+                oldPasswordIncorrect:
+                  summary: 原密码错误
+                  value:
+                    code: BAD_REQUEST
+                    message: 原密码错误
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+                samePassword:
+                  summary: 新密码与原密码相同
+                  value:
+                    code: BAD_REQUEST
+                    message: 新密码不能与原密码相同
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未携带 Token、Token 无效、Token 已过期或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: AUTH_REQUIRED
+                message: 请先登录
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: INTERNAL_ERROR
+                message: 服务器内部错误
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
 components:
   securitySchemes:
     bearerAuth:
@@ -153,6 +307,122 @@ components:
       bearerFormat: JWT
 
   schemas:
+    ChangePasswordDTO:
+      type: object
+      required:
+        - oldPassword
+        - newPassword
+      properties:
+        oldPassword:
+          type: string
+          format: password
+          maxLength: 128
+          description: 当前使用的明文密码
+          example: '12345678'
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: 准备设置的新明文密码，不能与原密码相同
+          example: newPassword123
+
+    EmptySuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          nullable: true
+          description: 当前操作没有业务响应数据，固定为 null
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    RegisterDTO:
+      type: object
+      required:
+        - username
+        - password
+        - displayName
+      properties:
+        username:
+          type: string
+          maxLength: 64
+          description: 登录用户名，不能与已有用户重复
+          example: resident01
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: 登录明文密码，仅通过 HTTPS 传输，服务端使用 BCrypt 加密保存
+          example: '12345678'
+        displayName:
+          type: string
+          maxLength: 64
+          description: 用户显示名称
+          example: 张三
+
+    RegisterVO:
+      type: object
+      required:
+        - userId
+        - username
+        - displayName
+        - roles
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 新用户 ID
+          example: 3
+        username:
+          type: string
+          example: resident01
+        displayName:
+          type: string
+          example: 张三
+        roles:
+          type: array
+          description: 注册时分配的角色编码，当前固定为 RESIDENT
+          items:
+            type: string
+          example:
+            - RESIDENT
+
+    RegisterSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/RegisterVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     LoginDTO:
       type: object
       required:

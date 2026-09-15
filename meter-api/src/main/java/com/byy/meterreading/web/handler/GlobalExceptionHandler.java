@@ -5,6 +5,7 @@ import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.common.trace.TraceIdContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.AuthenticationException;
@@ -72,6 +73,35 @@ public class GlobalExceptionHandler {
         );
 
         return Result.validation(fieldErrors);
+    }
+
+    /**
+     * 处理已经通过字段校验，但不满足业务规则的请求参数。
+     * 例如原密码错误，或者新密码与原密码相同。
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleIllegalArgumentException(
+            IllegalArgumentException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.BAD_REQUEST,
+                exception.getMessage()
+        );
+    }
+
+    /**
+     * 数据库唯一索引冲突时返回资源冲突，注册场景中表示用户名已经存在。
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<Void> handleDuplicateKeyException(
+            DuplicateKeyException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.RESOURCE_CONFLICT,
+                "用户名已存在"
+        );
     }
 
     /**
