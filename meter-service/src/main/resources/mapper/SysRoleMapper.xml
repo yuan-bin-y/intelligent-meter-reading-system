@@ -14,4 +14,20 @@
         ORDER BY role.id
     </select>
 
+    <!-- 批量查询当前页用户的有效角色，避免逐个用户查询产生 N+1 问题。 -->
+    <select id="selectRoleCodesByUserIds"
+            resultType="com.byy.meterreading.mapper.projection.UserRoleCodeRow">
+        SELECT ur.user_id  AS userId,
+               r.role_code AS roleCode
+        FROM sys_user_role AS ur
+        INNER JOIN sys_role AS r
+                ON r.id = ur.role_id
+        WHERE ur.user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+          AND r.status = 1
+        ORDER BY ur.user_id, r.id
+    </select>
+
 </mapper>

@@ -2,9 +2,13 @@ package com.byy.meterreading.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.mapper.SysRoleMapper;
 import com.byy.meterreading.mapper.SysUserMapper;
 import com.byy.meterreading.mapper.SysUserRoleMapper;
+import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
 import com.byy.meterreading.model.SysRole;
 import com.byy.meterreading.model.SysUser;
 import com.byy.meterreading.model.SysUserRole;
@@ -12,6 +16,7 @@ import com.byy.meterreading.service.SysUserService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 @Service
@@ -106,5 +111,27 @@ public class SysUserServiceImpl implements SysUserService {
                 sysRoleMapper.selectRoleCodesByUserId(userId);
 
         return roleCodes == null ? List.of() : roleCodes;
+    }
+
+    // 使用自定义 Mapper 查询管理员用户列表，分页由 MyBatis-Plus 插件完成
+    @Override
+    public IPage<SysUser> pageAdminUsers(
+            Page<SysUser> page,
+            UserPageQueryDTO queryDTO
+    ) {
+        return sysUserMapper.selectAdminUserPage(page, queryDTO);
+    }
+
+    // 一次查询当前页全部用户的角色，避免循环查询数据库产生 N+1 问题
+    @Override
+    public List<UserRoleCodeRow> findRoleCodesByUserIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<UserRoleCodeRow> roleRows =
+                sysRoleMapper.selectRoleCodesByUserIds(userIds);
+
+        return roleRows == null ? List.of() : roleRows;
     }
 }
