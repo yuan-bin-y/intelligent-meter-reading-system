@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.handler;
 
+import com.byy.meterreading.auth.exception.RateLimitExceededException;
 import com.byy.meterreading.common.result.ApiErrorCode;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.common.trace.TraceIdContext;
@@ -51,6 +52,20 @@ public class GlobalExceptionHandler {
         return Result.failure(
                 ApiErrorCode.AUTH_FAILED,
                 ApiErrorCode.AUTH_FAILED.getMessage()
+        );
+    }
+
+    /**
+     * 登录、注册请求超过频率限制，或登录失败次数达到锁定阈值时返回 429。
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Result<Void> handleRateLimitExceededException(
+            RateLimitExceededException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.RATE_LIMITED,
+                exception.getMessage()
         );
     }
 

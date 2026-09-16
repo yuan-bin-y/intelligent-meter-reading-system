@@ -2,6 +2,7 @@ package com.byy.meterreading.auth.service.impl;
 
 import com.byy.meterreading.auth.security.CustomUserDetails;
 import com.byy.meterreading.auth.service.AuthService;
+import com.byy.meterreading.auth.service.RedisAuthProtectionService;
 import com.byy.meterreading.auth.token.IssuedTokenPair;
 import com.byy.meterreading.auth.token.JwtTokenService;
 import com.byy.meterreading.auth.token.RedisAuthSessionService;
@@ -20,6 +21,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,6 +44,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenService jwtTokenService;
     private final JwtDecoder refreshTokenDecoder;
     private final RedisAuthSessionService redisAuthSessionService;
+    private final RedisAuthProtectionService redisAuthProtectionService;
     private final SysUserService sysUserService;
     private final PasswordEncoder passwordEncoder;
 
@@ -50,12 +53,14 @@ public class AuthServiceImpl implements AuthService {
                            @Qualifier("refreshTokenDecoder")
                            JwtDecoder refreshTokenDecoder,
                            RedisAuthSessionService redisAuthSessionService,
+                           RedisAuthProtectionService redisAuthProtectionService,
                            SysUserService sysUserService,
                            PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.jwtTokenService = jwtTokenService;
         this.refreshTokenDecoder = refreshTokenDecoder;
         this.redisAuthSessionService = redisAuthSessionService;
+        this.redisAuthProtectionService = redisAuthProtectionService;
         this.sysUserService = sysUserService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -65,31 +70,45 @@ public class AuthServiceImpl implements AuthService {
     public LoginVO login(LoginDTO loginDTO) {
         // 1. 接收 LoginDTO
 
-        // 2. 调用 AuthenticationManager 进行认证
-        Authentication authentication = authenticationManager.authenticate(
-                UsernamePasswordAuthenticationToken.unauthenticated(
-                        loginDTO.username(),
-                        loginDTO.password()
-                )
-        );
+        // 2. 认证前检查该用户名是否已因连续失败而被临时锁定
+        redisAuthProtectionService.checkLoginAllowed(loginDTO.username());
 
-        // 3. 从认证结果中获取 Principal，判断类型后转成 CustomUserDetails
+        // 3. 调用 AuthenticationManager 认证，密码错误时累计失败次数
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(
+                            loginDTO.username(),
+                            loginDTO.password()
+                    )
+            );
+        } catch (BadCredentialsException exception) {
+            redisAuthProtectionService.recordLoginFailure(
+                    loginDTO.username()
+            );
+            throw exception;
+        }
+
+        // 4. 认证成功后清除该用户名尚未达到锁定阈值的失败记录
+        redisAuthProtectionService.clearLoginFailures(loginDTO.username());
+
+        // 5. 从认证结果中获取 Principal，判断类型后转成 CustomUserDetails
         Object principal = authentication.getPrincipal();
         if (!(principal instanceof CustomUserDetails)) {
             throw new IllegalStateException("认证结果中的用户信息类型不正确");
         }
         CustomUserDetails userDetails = (CustomUserDetails) principal;
 
-        // 4. 准备返回所需的用户数据
+        // 6. 准备返回所需的用户数据
         Long userId = userDetails.getUserId();
         String username = userDetails.getUsername();
         String displayName = userDetails.getDisplayName();
         List<String> roles = userDetails.getRoles();
 
-        // 5. 为本次登录签发属于同一个 sid 的 Access Token 和 Refresh Token
+        // 7. 为本次登录签发属于同一个 sid 的 Access Token 和 Refresh Token
         IssuedTokenPair tokenPair = jwtTokenService.issue(userDetails);
 
-        // 6. Redis 会话需要覆盖完整的 Refresh Token 有效期
+        // 8. Redis 会话需要覆盖完整的 Refresh Token 有效期
         redisAuthSessionService.activate(
                 userId,
                 tokenPair.sessionId(),
@@ -97,7 +116,7 @@ public class AuthServiceImpl implements AuthService {
                 Duration.ofSeconds(tokenPair.refreshExpiresIn())
         );
 
-        // 7. 统一组装包含双 Token 的 LoginVO 并返回
+        // 9. 统一组装包含双 Token 的 LoginVO 并返回
         return new LoginVO(
                 tokenPair.accessToken(),
                 tokenPair.refreshToken(),

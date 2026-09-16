@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.controller;
 
 import com.byy.meterreading.auth.service.AuthService;
+import com.byy.meterreading.auth.service.RedisAuthProtectionService;
 import com.byy.meterreading.auth.token.JwtTokenService;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.auth.ChangePasswordDTO;
@@ -11,6 +12,7 @@ import com.byy.meterreading.vo.auth.CurrentUserVO;
 import com.byy.meterreading.vo.auth.LoginVO;
 import com.byy.meterreading.vo.auth.RefreshTokenVO;
 import com.byy.meterreading.vo.auth.RegisterVO;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,16 +29,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final RedisAuthProtectionService redisAuthProtectionService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(
+            AuthService authService,
+            RedisAuthProtectionService redisAuthProtectionService
+    ) {
         this.authService = authService;
+        this.redisAuthProtectionService = redisAuthProtectionService;
     }
 
     //用户登录
     @PostMapping("/login")
     public Result<LoginVO> login(
-            @Valid @RequestBody LoginDTO loginDTO
+            @Valid @RequestBody LoginDTO loginDTO,
+            HttpServletRequest request
     ) {
+        // 根据客户端 IP 和用户名限制登录接口的调用频率。
+        redisAuthProtectionService.checkLoginRate(
+                request.getRemoteAddr(),
+                loginDTO.username()
+        );
+
         LoginVO loginVO = authService.login(loginDTO);
         return Result.success(loginVO);
     }
@@ -46,8 +60,14 @@ public class AuthController {
      */
     @PostMapping("/register")
     public Result<RegisterVO> register(
-            @Valid @RequestBody RegisterDTO registerDTO
+            @Valid @RequestBody RegisterDTO registerDTO,
+            HttpServletRequest request
     ) {
+        // 根据客户端 IP 限制短时间内重复注册账号。
+        redisAuthProtectionService.checkRegisterRate(
+                request.getRemoteAddr()
+        );
+
         RegisterVO registerVO = authService.register(registerDTO);
         return Result.success(registerVO);
     }

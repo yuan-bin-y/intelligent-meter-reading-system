@@ -11,6 +11,12 @@ app:
       access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT2H}
       refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
       secret-base64: ${JWT_SECRET_BASE64}
+    auth-protection:
+      login-per-minute: ${AUTH_LOGIN_PER_MINUTE:10}
+      register-per-hour: ${AUTH_REGISTER_PER_HOUR:5}
+      max-login-failures: ${AUTH_MAX_LOGIN_FAILURES:5}
+      login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:PT15M}
+      login-lock-duration: ${AUTH_LOGIN_LOCK_DURATION:PT15M}
 
 server:
   port: ${SERVER_PORT:8070}

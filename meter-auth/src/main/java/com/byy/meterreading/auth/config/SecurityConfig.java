@@ -3,6 +3,7 @@ package com.byy.meterreading.auth.config;
 import com.byy.meterreading.auth.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -23,6 +24,7 @@ import static org.springframework.http.HttpMethod.POST;
  * Spring Security 基础配置。
  */
 @Configuration
+@EnableConfigurationProperties(AuthProtectionProperties.class)
 public class SecurityConfig {
 
     /**
