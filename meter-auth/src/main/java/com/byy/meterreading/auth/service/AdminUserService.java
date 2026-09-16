@@ -1,6 +1,7 @@
 package com.byy.meterreading.auth.service;
 
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
+import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.user.AdminUserVO;
 
@@ -21,4 +22,18 @@ public interface AdminUserService {
      * @return 用户详情
      */
     AdminUserVO getUser(Long userId);
+
+    /**
+     * 管理员启用或禁用指定用户。
+     *
+     * @param currentAdminId     当前管理员 ID
+     * @param targetUserId       目标用户 ID
+     * @param updateUserStatusDTO 目标用户状态
+     * @return 更新后的用户信息
+     */
+    AdminUserVO updateUserStatus(
+            Long currentAdminId,
+            Long targetUserId,
+            UpdateUserStatusDTO updateUserStatusDTO
+    );
 }

@@ -3,7 +3,9 @@ package com.byy.meterreading.auth.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.auth.service.AdminUserService;
+import com.byy.meterreading.auth.token.RedisAuthSessionService;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
 import com.byy.meterreading.model.SysUser;
@@ -11,7 +13,9 @@ import com.byy.meterreading.service.SysUserService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.user.AdminUserVO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +28,14 @@ import java.util.stream.Collectors;
 public class AdminUserServiceImpl implements AdminUserService {
 
     private final SysUserService sysUserService;
+    private final RedisAuthSessionService redisAuthSessionService;
 
-    public AdminUserServiceImpl(SysUserService sysUserService) {
+    public AdminUserServiceImpl(
+            SysUserService sysUserService,
+            RedisAuthSessionService redisAuthSessionService
+    ) {
         this.sysUserService = sysUserService;
+        this.redisAuthSessionService = redisAuthSessionService;
     }
 
     /**
@@ -88,6 +97,59 @@ public class AdminUserServiceImpl implements AdminUserService {
         List<String> roles = sysUserService.findRoleCodesByUserId(userId);
 
         // 3. 将用户基本信息和角色组装成对外返回的 VO
+        return toAdminUserVO(user, roles);
+    }
+
+    /**
+     * 启用或禁用指定用户，并在状态变化后撤销该用户的全部登录会话。
+     */
+    @Override
+    @Transactional
+    public AdminUserVO updateUserStatus(
+            Long currentAdminId,
+            Long targetUserId,
+            UpdateUserStatusDTO updateUserStatusDTO
+    ) {
+        Integer targetStatus = updateUserStatusDTO.status();
+
+        // 1. 禁止管理员禁用自己的账号，避免失去后台管理入口
+        if (currentAdminId.equals(targetUserId)
+                && Integer.valueOf(0).equals(targetStatus)) {
+            throw new IllegalArgumentException("不能禁用当前登录账号");
+        }
+
+        // 2. 查询目标用户，用户不存在时返回 404
+        SysUser user = sysUserService.findById(targetUserId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+
+        // 3. 目标状态没有变化时不更新数据库，也不重复清理登录会话
+        if (targetStatus.equals(user.getStatus())) {
+            List<String> roles =
+                    sysUserService.findRoleCodesByUserId(targetUserId);
+            return toAdminUserVO(user, roles);
+        }
+
+        // 4. 更新用户状态和最后修改时间
+        LocalDateTime updatedAt = LocalDateTime.now();
+        int updatedRows = sysUserService.updateUserStatus(
+                targetUserId,
+                targetStatus,
+                updatedAt
+        );
+        if (updatedRows != 1) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+
+        // 5. 状态变化后撤销该用户全部设备的 Access Token 和 Refresh Token 会话
+        redisAuthSessionService.revokeAll(targetUserId);
+
+        // 6. 更新内存中的实体并组装最新用户信息
+        user.setStatus(targetStatus);
+        user.setUpdatedAt(updatedAt);
+        List<String> roles =
+                sysUserService.findRoleCodesByUserId(targetUserId);
         return toAdminUserVO(user, roles);
     }
 

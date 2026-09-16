@@ -104,6 +104,22 @@ public class SysUserServiceImpl implements SysUserService {
         return sysUserMapper.update(updateWrapper);
     }
 
+    // 根据用户 ID 更新状态和最后修改时间，返回数据库实际更新的行数
+    @Override
+    public int updateUserStatus(
+            Long userId,
+            Integer status,
+            LocalDateTime updatedAt
+    ) {
+        LambdaUpdateWrapper<SysUser> updateWrapper =
+                new LambdaUpdateWrapper<SysUser>()
+                        .eq(SysUser::getId, userId)
+                        .set(SysUser::getStatus, status)
+                        .set(SysUser::getUpdatedAt, updatedAt);
+
+        return sysUserMapper.update(updateWrapper);
+    }
+
     //更具id查询角色编码
     @Override
     public List<String> findRoleCodesByUserId(Long userId) {

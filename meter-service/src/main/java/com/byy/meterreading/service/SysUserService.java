@@ -61,6 +61,17 @@ public interface SysUserService {
     );
 
     /**
+     * 根据用户 ID 更新用户状态和最后修改时间。
+     *
+     * @return 受影响行数，1 表示成功，0 表示用户不存在
+     */
+    int updateUserStatus(
+            Long userId,
+            Integer status,
+            LocalDateTime updatedAt
+    );
+
+    /**
      * 查询用户拥有的角色编码。
      *
      * @param userId 用户 ID
