@@ -45,9 +45,23 @@ public interface SysUserService {
     SysRole findEnabledRoleByCode(String roleCode);
 
     /**
+     * 根据角色编码集合批量查询已启用的角色。
+     */
+    List<SysRole> findEnabledRolesByCodes(Collection<String> roleCodes);
+
+    /**
      * 为用户绑定角色。
      */
     void bindRole(Long userId, Long roleId);
+
+    /**
+     * 删除用户原有角色关系，再批量写入新的角色关系。
+     */
+    void replaceUserRoles(
+            Long userId,
+            Collection<Long> roleIds,
+            LocalDateTime createdAt
+    );
 
     /**
      * 更新启用用户的密码哈希和修改时间。

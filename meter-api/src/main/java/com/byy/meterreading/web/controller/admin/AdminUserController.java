@@ -2,6 +2,7 @@ package com.byy.meterreading.web.controller.admin;
 
 import com.byy.meterreading.auth.service.AdminUserService;
 import com.byy.meterreading.common.result.Result;
+import com.byy.meterreading.dto.user.UpdateUserRolesDTO;
 import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.vo.common.PageVO;
@@ -66,6 +67,23 @@ public class AdminUserController {
                 extractUserId(jwt),
                 userId,
                 updateUserStatusDTO
+        ));
+    }
+
+    /**
+     * 修改指定用户拥有的角色。
+     */
+    @PutMapping("/{userId}/roles")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<AdminUserVO> updateUserRoles(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long userId,
+            @Valid @RequestBody UpdateUserRolesDTO updateUserRolesDTO
+    ) {
+        return Result.success(adminUserService.updateUserRoles(
+                extractUserId(jwt),
+                userId,
+                updateUserRolesDTO
         ));
     }
 

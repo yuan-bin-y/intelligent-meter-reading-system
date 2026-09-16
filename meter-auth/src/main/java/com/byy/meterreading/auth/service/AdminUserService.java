@@ -1,6 +1,7 @@
 package com.byy.meterreading.auth.service;
 
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
+import com.byy.meterreading.dto.user.UpdateUserRolesDTO;
 import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.user.AdminUserVO;
@@ -35,5 +36,19 @@ public interface AdminUserService {
             Long currentAdminId,
             Long targetUserId,
             UpdateUserStatusDTO updateUserStatusDTO
+    );
+
+    /**
+     * 管理员重新设置指定用户拥有的角色。
+     *
+     * @param currentAdminId   当前管理员 ID
+     * @param targetUserId     目标用户 ID
+     * @param updateUserRolesDTO 新的角色编码集合
+     * @return 更新后的用户信息
+     */
+    AdminUserVO updateUserRoles(
+            Long currentAdminId,
+            Long targetUserId,
+            UpdateUserRolesDTO updateUserRolesDTO
     );
 }

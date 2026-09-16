@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.auth.service.AdminUserService;
 import com.byy.meterreading.auth.token.RedisAuthSessionService;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.dto.user.UpdateUserRolesDTO;
 import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
+import com.byy.meterreading.model.SysRole;
 import com.byy.meterreading.model.SysUser;
 import com.byy.meterreading.service.SysUserService;
 import com.byy.meterreading.vo.common.PageVO;
@@ -19,6 +21,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -151,6 +154,74 @@ public class AdminUserServiceImpl implements AdminUserService {
         List<String> roles =
                 sysUserService.findRoleCodesByUserId(targetUserId);
         return toAdminUserVO(user, roles);
+    }
+
+    /**
+     * 重新设置指定用户拥有的角色，并使该用户原有登录会话失效。
+     */
+    @Override
+    @Transactional
+    public AdminUserVO updateUserRoles(
+            Long currentAdminId,
+            Long targetUserId,
+            UpdateUserRolesDTO updateUserRolesDTO
+    ) {
+        List<String> requestedRoleCodes = updateUserRolesDTO.roles();
+
+        // 1. 确认目标用户存在
+        SysUser user = sysUserService.findById(targetUserId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+
+        // 2. 禁止当前管理员移除自己的 ADMIN 角色
+        if (currentAdminId.equals(targetUserId)
+                && !requestedRoleCodes.contains("ADMIN")) {
+            throw new IllegalArgumentException(
+                    "不能移除当前登录账号的 ADMIN 角色"
+            );
+        }
+
+        // 3. 批量查询请求中的有效角色，并检查是否存在无效或已禁用的角色编码
+        List<SysRole> enabledRoles =
+                sysUserService.findEnabledRolesByCodes(requestedRoleCodes);
+        Map<String, SysRole> roleByCode = enabledRoles.stream()
+                .collect(Collectors.toMap(
+                        SysRole::getRoleCode,
+                        role -> role
+                ));
+        List<String> invalidRoleCodes = requestedRoleCodes.stream()
+                .filter(roleCode -> !roleByCode.containsKey(roleCode))
+                .toList();
+        if (!invalidRoleCodes.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "角色不存在或已禁用：" + String.join(", ", invalidRoleCodes)
+            );
+        }
+
+        // 4. 新旧角色相同时不修改数据库，也不清除登录会话
+        List<String> currentRoleCodes =
+                sysUserService.findRoleCodesByUserId(targetUserId);
+        if (Set.copyOf(currentRoleCodes)
+                .equals(Set.copyOf(requestedRoleCodes))) {
+            return toAdminUserVO(user, currentRoleCodes);
+        }
+
+        // 5. 按请求顺序取得角色 ID，并在数据库事务中替换用户角色关系
+        List<Long> roleIds = requestedRoleCodes.stream()
+                .map(roleCode -> roleByCode.get(roleCode).getId())
+                .toList();
+        sysUserService.replaceUserRoles(
+                targetUserId,
+                roleIds,
+                LocalDateTime.now()
+        );
+
+        // 6. 权限变化后撤销全部旧会话，旧 JWT 中的角色立即失效
+        redisAuthSessionService.revokeAll(targetUserId);
+
+        // 7. DTO 已完成大写转换和去重，可直接作为最新角色返回
+        return toAdminUserVO(user, requestedRoleCodes);
     }
 
     /**

@@ -77,6 +77,25 @@ public class SysUserServiceImpl implements SysUserService {
         return sysRoleMapper.selectOne(queryWrapper);
     }
 
+    // 根据角色编码集合一次查询全部启用角色，空集合不访问数据库
+    @Override
+    public List<SysRole> findEnabledRolesByCodes(
+            Collection<String> roleCodes
+    ) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return List.of();
+        }
+
+        LambdaQueryWrapper<SysRole> queryWrapper =
+                new LambdaQueryWrapper<SysRole>()
+                        .in(SysRole::getRoleCode, roleCodes)
+                        .eq(SysRole::getStatus, 1)
+                        .orderByAsc(SysRole::getId);
+
+        List<SysRole> roles = sysRoleMapper.selectList(queryWrapper);
+        return roles == null ? List.of() : roles;
+    }
+
     // 向用户角色关联表写入一条绑定记录
     @Override
     public void bindRole(Long userId, Long roleId) {
@@ -85,6 +104,32 @@ public class SysUserServiceImpl implements SysUserService {
                 .roleId(roleId)
                 .build();
         sysUserRoleMapper.insert(userRole);
+    }
+
+    // 删除原角色关系后批量写入新关系，外层业务方法负责开启数据库事务
+    @Override
+    public void replaceUserRoles(
+            Long userId,
+            Collection<Long> roleIds,
+            LocalDateTime createdAt
+    ) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            throw new IllegalArgumentException("用户角色不能为空");
+        }
+
+        LambdaQueryWrapper<SysUserRole> deleteWrapper =
+                new LambdaQueryWrapper<SysUserRole>()
+                        .eq(SysUserRole::getUserId, userId);
+        sysUserRoleMapper.delete(deleteWrapper);
+
+        List<SysUserRole> userRoles = roleIds.stream()
+                .map(roleId -> SysUserRole.builder()
+                        .userId(userId)
+                        .roleId(roleId)
+                        .createdAt(createdAt)
+                        .build())
+                .toList();
+        sysUserRoleMapper.insertBatch(userRoles);
     }
 
     // 只允许更新启用用户，并返回数据库实际更新的行数

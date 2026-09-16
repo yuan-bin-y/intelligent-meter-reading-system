@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: 智能抄表系统认证接口
-  description: 当前认证模块的 Apifox 测试文档，包含注册、双 Token 登录、Token 刷新、退出登录、获取当前用户、修改密码和 Redis 认证保护规则。
-  version: 1.5.0
+  title: 智能抄表系统认证与用户管理接口
+  description: 当前认证和用户管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户查询、状态管理和角色管理接口。
+  version: 1.6.0
 
 servers:
   - url: http://localhost:8070
@@ -11,6 +11,8 @@ servers:
 tags:
   - name: 认证
     description: 用户注册、登录、身份查询和密码管理接口
+  - name: 用户管理
+    description: 仅拥有 ADMIN 角色的用户可以访问的后台用户管理接口
 
 paths:
   /api/v1/auth/register:
@@ -445,6 +447,360 @@ paths:
                 data: null
                 traceId: 01JEXAMPLETRACEID
 
+  /api/v1/admin/users:
+    get:
+      tags:
+        - 用户管理
+      summary: 分页查询用户
+      description: 按用户名、状态和角色筛选用户。仅 ADMIN 可访问；用户基本信息分页查询后，会批量查询当前页用户的有效角色。
+      operationId: listAdminUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 页码，从 1 开始，默认 1
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: 每页数量，默认 20，最大 100
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: username
+          in: query
+          required: false
+          description: 用户名关键字，支持模糊查询
+          schema:
+            type: string
+            maxLength: 64
+        - name: status
+          in: query
+          required: false
+          description: 用户状态，0 禁用，1 启用
+          schema:
+            type: integer
+            enum:
+              - 0
+              - 1
+        - name: roleCode
+          in: query
+          required: false
+          description: 角色编码，服务端会去除首尾空格并转换为大写
+          schema:
+            type: string
+            maxLength: 64
+          example: ADMIN
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserPageSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  records:
+                    - userId: 2
+                      username: admin
+                      displayName: 系统管理员
+                      status: 1
+                      roles:
+                        - ADMIN
+                      createdAt: '2026-09-16T10:00:00'
+                      updatedAt: '2026-09-16T10:00:00'
+                  total: 1
+                  page: 1
+                  pageSize: 20
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 页码、每页数量、状态或筛选字段校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未携带 Access Token、Token 无效、已过期或 Redis 会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: FORBIDDEN
+                message: 无权限访问
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/users/{userId}:
+    get:
+      tags:
+        - 用户管理
+      summary: 查询用户详情
+      description: 根据用户 ID 查询用户基本信息和当前拥有的有效角色，仅 ADMIN 可访问。
+      operationId: getAdminUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 3
+                  username: resident01
+                  displayName: 张三
+                  status: 1
+                  roles:
+                    - RESIDENT
+                  createdAt: '2026-09-16T10:00:00'
+                  updatedAt: '2026-09-16T10:00:00'
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: 用户不存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/users/{userId}/status:
+    put:
+      tags:
+        - 用户管理
+      summary: 启用或禁用用户
+      description: 修改用户状态和更新时间。状态变化后清除该用户全部 Redis 登录会话；当前管理员不能禁用自己的账号。
+      operationId: updateAdminUserStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusDTO'
+            example:
+              status: 0
+      responses:
+        '200':
+          description: 状态修改成功；如果目标状态与当前状态相同，则直接返回现有用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 3
+                  username: resident01
+                  displayName: 张三
+                  status: 0
+                  roles:
+                    - RESIDENT
+                  createdAt: '2026-09-16T10:00:00'
+                  updatedAt: '2026-09-16T11:00:00'
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 状态参数校验失败，或者当前管理员尝试禁用自己
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+              examples:
+                invalidStatus:
+                  summary: 状态不是 0 或 1
+                  value:
+                    code: BAD_REQUEST
+                    message: 请求参数不正确
+                    data:
+                      status: 用户状态只能是0或1
+                    traceId: 01JEXAMPLETRACEID
+                disableSelf:
+                  summary: 当前管理员禁用自己
+                  value:
+                    code: BAD_REQUEST
+                    message: 不能禁用当前登录账号
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: 用户不存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误，包括 Redis 会话清理失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/users/{userId}/roles:
+    put:
+      tags:
+        - 用户管理
+      summary: 修改用户角色
+      description: 校验角色编码后，在同一数据库事务中删除旧角色关系并批量写入新关系。角色变化后清除该用户全部 Redis 登录会话；当前管理员不能移除自己的 ADMIN 角色。
+      operationId: updateAdminUserRoles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRolesDTO'
+            example:
+              roles:
+                - METER_READER
+                - AUDITOR
+      responses:
+        '200':
+          description: 角色修改成功；如果新旧角色相同，则直接返回现有用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 3
+                  username: resident01
+                  displayName: 张三
+                  status: 1
+                  roles:
+                    - METER_READER
+                    - AUDITOR
+                  createdAt: '2026-09-16T10:00:00'
+                  updatedAt: '2026-09-16T10:00:00'
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 角色集合校验失败、角色不存在或已禁用，或者当前管理员尝试移除自己的 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+              examples:
+                invalidRole:
+                  summary: 角色不存在或已禁用
+                  value:
+                    code: BAD_REQUEST
+                    message: 角色不存在或已禁用：UNKNOWN_ROLE
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+                removeOwnAdmin:
+                  summary: 当前管理员移除自己的 ADMIN 角色
+                  value:
+                    code: BAD_REQUEST
+                    message: 不能移除当前登录账号的 ADMIN 角色
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: 用户不存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误，包括数据库批量更新或 Redis 会话清理失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -452,7 +808,171 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  parameters:
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      description: 目标用户 ID
+      schema:
+        type: integer
+        format: int64
+      example: 3
+
   schemas:
+    UpdateUserStatusDTO:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: integer
+          minimum: 0
+          maximum: 1
+          enum:
+            - 0
+            - 1
+          description: 用户状态，0 禁用，1 启用
+          example: 0
+
+    UpdateUserRolesDTO:
+      type: object
+      required:
+        - roles
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: 新的角色编码集合；服务端会去除首尾空格、转换为大写并自动去重
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+          example:
+            - METER_READER
+            - AUDITOR
+
+    AdminUserVO:
+      type: object
+      required:
+        - userId
+        - username
+        - displayName
+        - status
+        - roles
+        - createdAt
+        - updatedAt
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 用户 ID
+          example: 3
+        username:
+          type: string
+          description: 登录用户名
+          example: resident01
+        displayName:
+          type: string
+          description: 用户显示名称
+          example: 张三
+        status:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: 用户状态，0 禁用，1 启用
+          example: 1
+        roles:
+          type: array
+          description: 用户当前拥有的有效角色编码
+          items:
+            type: string
+          example:
+            - RESIDENT
+        createdAt:
+          type: string
+          format: date-time
+          description: 用户创建时间
+          example: '2026-09-16T10:00:00'
+        updatedAt:
+          type: string
+          format: date-time
+          description: 用户最后更新时间
+          example: '2026-09-16T10:00:00'
+
+    AdminUserPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          description: 当前页用户
+          items:
+            $ref: '#/components/schemas/AdminUserVO'
+        total:
+          type: integer
+          format: int64
+          description: 符合条件的用户总数
+          example: 1
+        page:
+          type: integer
+          format: int64
+          description: 当前页码
+          example: 1
+        pageSize:
+          type: integer
+          format: int64
+          description: 每页数量
+          example: 20
+
+    AdminUserSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/AdminUserVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    AdminUserPageSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/AdminUserPageVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     ChangePasswordDTO:
       type: object
       required:
