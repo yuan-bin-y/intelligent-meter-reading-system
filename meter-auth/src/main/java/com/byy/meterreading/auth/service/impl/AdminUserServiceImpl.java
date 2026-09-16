@@ -3,6 +3,7 @@ package com.byy.meterreading.auth.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.auth.service.AdminUserService;
+import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
 import com.byy.meterreading.model.SysUser;
@@ -70,6 +71,24 @@ public class AdminUserServiceImpl implements AdminUserService {
                 userPage.getCurrent(),
                 userPage.getSize()
         );
+    }
+
+    /**
+     * 查询单个用户的基本信息和角色。
+     */
+    @Override
+    public AdminUserVO getUser(Long userId) {
+        // 1. 根据主键查询 sys_user 表中的用户
+        SysUser user = sysUserService.findById(userId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+
+        // 2. 查询用户拥有的有效角色编码
+        List<String> roles = sysUserService.findRoleCodesByUserId(userId);
+
+        // 3. 将用户基本信息和角色组装成对外返回的 VO
+        return toAdminUserVO(user, roles);
     }
 
     /**

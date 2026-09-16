@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,5 +35,14 @@ public class AdminUserController {
             @Valid @ModelAttribute UserPageQueryDTO queryDTO
     ) {
         return Result.success(adminUserService.listUsers(queryDTO));
+    }
+
+    /**
+     * 根据用户 ID 查询用户详情。
+     */
+    @GetMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<AdminUserVO> getUser(@PathVariable Long userId) {
+        return Result.success(adminUserService.getUser(userId));
     }
 }

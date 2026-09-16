@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.handler;
 
 import com.byy.meterreading.auth.exception.RateLimitExceededException;
+import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.result.ApiErrorCode;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.common.trace.TraceIdContext;
@@ -65,6 +66,20 @@ public class GlobalExceptionHandler {
     ) {
         return Result.failure(
                 ApiErrorCode.RATE_LIMITED,
+                exception.getMessage()
+        );
+    }
+
+    /**
+     * 管理端查询的用户等业务资源不存在时返回 404。
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleResourceNotFoundException(
+            ResourceNotFoundException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.RESOURCE_NOT_FOUND,
                 exception.getMessage()
         );
     }
