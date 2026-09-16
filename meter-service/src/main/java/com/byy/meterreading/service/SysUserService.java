@@ -50,6 +50,11 @@ public interface SysUserService {
     List<SysRole> findEnabledRolesByCodes(Collection<String> roleCodes);
 
     /**
+     * 查询全部已启用角色。
+     */
+    List<SysRole> findAllEnabledRoles();
+
+    /**
      * 为用户绑定角色。
      */
     void bindRole(Long userId, Long roleId);
@@ -71,6 +76,24 @@ public interface SysUserService {
     int updatePasswordHash(
             Long userId,
             String passwordHash,
+            LocalDateTime updatedAt
+    );
+
+    /**
+     * 管理员重置用户密码，不受用户当前启用状态限制。
+     */
+    int updatePasswordHashByAdmin(
+            Long userId,
+            String passwordHash,
+            LocalDateTime updatedAt
+    );
+
+    /**
+     * 根据用户 ID 更新显示名称和最后修改时间。
+     */
+    int updateDisplayName(
+            Long userId,
+            String displayName,
             LocalDateTime updatedAt
     );
 

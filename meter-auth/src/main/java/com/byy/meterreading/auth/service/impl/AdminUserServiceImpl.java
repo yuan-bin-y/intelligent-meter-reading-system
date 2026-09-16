@@ -3,9 +3,13 @@ package com.byy.meterreading.auth.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.auth.service.AdminUserService;
+import com.byy.meterreading.auth.service.RedisAuthProtectionService;
 import com.byy.meterreading.auth.token.RedisAuthSessionService;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.dto.user.AdminCreateUserDTO;
+import com.byy.meterreading.dto.user.AdminResetPasswordDTO;
 import com.byy.meterreading.dto.user.UpdateUserRolesDTO;
+import com.byy.meterreading.dto.user.UpdateUserProfileDTO;
 import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
@@ -14,6 +18,9 @@ import com.byy.meterreading.model.SysUser;
 import com.byy.meterreading.service.SysUserService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.user.AdminUserVO;
+import com.byy.meterreading.vo.user.AssignableRoleVO;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,13 +39,66 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     private final SysUserService sysUserService;
     private final RedisAuthSessionService redisAuthSessionService;
+    private final RedisAuthProtectionService redisAuthProtectionService;
+    private final PasswordEncoder passwordEncoder;
 
     public AdminUserServiceImpl(
             SysUserService sysUserService,
-            RedisAuthSessionService redisAuthSessionService
+            RedisAuthSessionService redisAuthSessionService,
+            RedisAuthProtectionService redisAuthProtectionService,
+            PasswordEncoder passwordEncoder
     ) {
         this.sysUserService = sysUserService;
         this.redisAuthSessionService = redisAuthSessionService;
+        this.redisAuthProtectionService = redisAuthProtectionService;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * 创建用户、保存 BCrypt 密码哈希并批量绑定初始角色。
+     */
+    @Override
+    @Transactional
+    public AdminUserVO createUser(AdminCreateUserDTO adminCreateUserDTO) {
+        String username = adminCreateUserDTO.username();
+
+        // 1. 预先检查用户名，数据库唯一索引继续负责并发场景兜底
+        if (sysUserService.existsByUsername(username)) {
+            throw new DuplicateKeyException("用户名已存在");
+        }
+
+        // 2. 一次查询并校验管理员指定的全部角色
+        List<SysRole> roles = resolveEnabledRoles(adminCreateUserDTO.roles());
+
+        // 3. 明文密码只用于生成 BCrypt 哈希，不写入数据库
+        SysUser user = SysUser.builder()
+                .username(username)
+                .passwordHash(passwordEncoder.encode(
+                        adminCreateUserDTO.password()
+                ))
+                .displayName(adminCreateUserDTO.displayName())
+                .status(adminCreateUserDTO.status())
+                .build();
+        try {
+            sysUserService.createUser(user);
+        } catch (DuplicateKeyException exception) {
+            throw new DuplicateKeyException("用户名已存在", exception);
+        }
+
+        // 4. 使用回填的用户 ID 批量写入用户角色关系
+        LocalDateTime createdAt = LocalDateTime.now();
+        sysUserService.replaceUserRoles(
+                user.getId(),
+                roles.stream().map(SysRole::getId).toList(),
+                createdAt
+        );
+
+        // 5. 重新查询数据库默认生成的创建时间和更新时间
+        SysUser createdUser = sysUserService.findById(user.getId());
+        return toAdminUserVO(
+                createdUser,
+                adminCreateUserDTO.roles()
+        );
     }
 
     /**
@@ -183,21 +243,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
 
         // 3. 批量查询请求中的有效角色，并检查是否存在无效或已禁用的角色编码
-        List<SysRole> enabledRoles =
-                sysUserService.findEnabledRolesByCodes(requestedRoleCodes);
-        Map<String, SysRole> roleByCode = enabledRoles.stream()
-                .collect(Collectors.toMap(
-                        SysRole::getRoleCode,
-                        role -> role
-                ));
-        List<String> invalidRoleCodes = requestedRoleCodes.stream()
-                .filter(roleCode -> !roleByCode.containsKey(roleCode))
-                .toList();
-        if (!invalidRoleCodes.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "角色不存在或已禁用：" + String.join(", ", invalidRoleCodes)
-            );
-        }
+        List<SysRole> enabledRoles = resolveEnabledRoles(requestedRoleCodes);
 
         // 4. 新旧角色相同时不修改数据库，也不清除登录会话
         List<String> currentRoleCodes =
@@ -208,8 +254,8 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
 
         // 5. 按请求顺序取得角色 ID，并在数据库事务中替换用户角色关系
-        List<Long> roleIds = requestedRoleCodes.stream()
-                .map(roleCode -> roleByCode.get(roleCode).getId())
+        List<Long> roleIds = enabledRoles.stream()
+                .map(SysRole::getId)
                 .toList();
         sysUserService.replaceUserRoles(
                 targetUserId,
@@ -222,6 +268,125 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         // 7. DTO 已完成大写转换和去重，可直接作为最新角色返回
         return toAdminUserVO(user, requestedRoleCodes);
+    }
+
+    /**
+     * 修改用户显示名称。
+     */
+    @Override
+    @Transactional
+    public AdminUserVO updateUserProfile(
+            Long targetUserId,
+            UpdateUserProfileDTO updateUserProfileDTO
+    ) {
+        SysUser user = requireUser(targetUserId);
+        String displayName = updateUserProfileDTO.displayName();
+
+        if (!displayName.equals(user.getDisplayName())) {
+            LocalDateTime updatedAt = LocalDateTime.now();
+            int updatedRows = sysUserService.updateDisplayName(
+                    targetUserId,
+                    displayName,
+                    updatedAt
+            );
+            if (updatedRows != 1) {
+                throw new ResourceNotFoundException("用户不存在");
+            }
+            user.setDisplayName(displayName);
+            user.setUpdatedAt(updatedAt);
+        }
+
+        return toAdminUserVO(
+                user,
+                sysUserService.findRoleCodesByUserId(targetUserId)
+        );
+    }
+
+    /**
+     * 重置用户密码并撤销该用户全部登录会话。
+     */
+    @Override
+    @Transactional
+    public void resetUserPassword(
+            Long targetUserId,
+            AdminResetPasswordDTO adminResetPasswordDTO
+    ) {
+        requireUser(targetUserId);
+
+        String passwordHash = passwordEncoder.encode(
+                adminResetPasswordDTO.newPassword()
+        );
+        int updatedRows = sysUserService.updatePasswordHashByAdmin(
+                targetUserId,
+                passwordHash,
+                LocalDateTime.now()
+        );
+        if (updatedRows != 1) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+
+        // Redis 失败会抛出异常，使本次 MySQL 事务回滚
+        redisAuthSessionService.revokeAll(targetUserId);
+    }
+
+    /**
+     * 查询管理员可以分配的全部启用角色。
+     */
+    @Override
+    public List<AssignableRoleVO> listAssignableRoles() {
+        return sysUserService.findAllEnabledRoles().stream()
+                .map(role -> new AssignableRoleVO(
+                        role.getId(),
+                        role.getRoleCode(),
+                        role.getRoleName()
+                ))
+                .toList();
+    }
+
+    /**
+     * 清除用户的登录失败计数和临时锁定状态。
+     */
+    @Override
+    public void clearLoginLock(Long targetUserId) {
+        SysUser user = requireUser(targetUserId);
+        redisAuthProtectionService.clearLoginLock(user.getUsername());
+    }
+
+    /**
+     * 查询用户，不存在时统一返回资源不存在。
+     */
+    private SysUser requireUser(Long userId) {
+        SysUser user = sysUserService.findById(userId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+        return user;
+    }
+
+    /**
+     * 校验角色编码全部存在且已启用，并按请求顺序返回角色实体。
+     */
+    private List<SysRole> resolveEnabledRoles(List<String> requestedRoleCodes) {
+        List<SysRole> enabledRoles =
+                sysUserService.findEnabledRolesByCodes(requestedRoleCodes);
+        Map<String, SysRole> roleByCode = enabledRoles.stream()
+                .collect(Collectors.toMap(
+                        SysRole::getRoleCode,
+                        role -> role
+                ));
+
+        List<String> invalidRoleCodes = requestedRoleCodes.stream()
+                .filter(roleCode -> !roleByCode.containsKey(roleCode))
+                .toList();
+        if (!invalidRoleCodes.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "角色不存在或已禁用：" + String.join(", ", invalidRoleCodes)
+            );
+        }
+
+        return requestedRoleCodes.stream()
+                .map(roleByCode::get)
+                .toList();
     }
 
     /**

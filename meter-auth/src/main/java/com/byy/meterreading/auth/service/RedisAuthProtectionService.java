@@ -168,6 +168,20 @@ public class RedisAuthProtectionService {
     }
 
     /**
+     * 管理员主动解除登录锁定，同时清除失败次数。
+     *
+     * <p>该操作不降级处理 Redis 异常，删除失败时由接口返回 500，
+     * 避免管理员误以为锁定状态已经解除。</p>
+     */
+    public void clearLoginLock(String username) {
+        String subjectDigest = digest(normalizeUsername(username));
+        redisTemplate.delete(List.of(
+                loginFailureKey(subjectDigest),
+                loginLockKey(subjectDigest)
+        ));
+    }
+
+    /**
      * 执行固定窗口计数，超过窗口允许次数时拒绝当前请求。
      */
     private void checkFixedWindow(

@@ -96,6 +96,18 @@ public class SysUserServiceImpl implements SysUserService {
         return roles == null ? List.of() : roles;
     }
 
+    // 查询创建用户和分配角色时可以选择的全部启用角色
+    @Override
+    public List<SysRole> findAllEnabledRoles() {
+        LambdaQueryWrapper<SysRole> queryWrapper =
+                new LambdaQueryWrapper<SysRole>()
+                        .eq(SysRole::getStatus, 1)
+                        .orderByAsc(SysRole::getId);
+
+        List<SysRole> roles = sysRoleMapper.selectList(queryWrapper);
+        return roles == null ? List.of() : roles;
+    }
+
     // 向用户角色关联表写入一条绑定记录
     @Override
     public void bindRole(Long userId, Long roleId) {
@@ -144,6 +156,38 @@ public class SysUserServiceImpl implements SysUserService {
                         .eq(SysUser::getId, userId)
                         .eq(SysUser::getStatus, 1)
                         .set(SysUser::getPasswordHash, passwordHash)
+                        .set(SysUser::getUpdatedAt, updatedAt);
+
+        return sysUserMapper.update(updateWrapper);
+    }
+
+    // 管理员可以为启用或禁用状态的用户重置密码
+    @Override
+    public int updatePasswordHashByAdmin(
+            Long userId,
+            String passwordHash,
+            LocalDateTime updatedAt
+    ) {
+        LambdaUpdateWrapper<SysUser> updateWrapper =
+                new LambdaUpdateWrapper<SysUser>()
+                        .eq(SysUser::getId, userId)
+                        .set(SysUser::getPasswordHash, passwordHash)
+                        .set(SysUser::getUpdatedAt, updatedAt);
+
+        return sysUserMapper.update(updateWrapper);
+    }
+
+    // 根据用户 ID 更新显示名称和最后修改时间
+    @Override
+    public int updateDisplayName(
+            Long userId,
+            String displayName,
+            LocalDateTime updatedAt
+    ) {
+        LambdaUpdateWrapper<SysUser> updateWrapper =
+                new LambdaUpdateWrapper<SysUser>()
+                        .eq(SysUser::getId, userId)
+                        .set(SysUser::getDisplayName, displayName)
                         .set(SysUser::getUpdatedAt, updatedAt);
 
         return sysUserMapper.update(updateWrapper);

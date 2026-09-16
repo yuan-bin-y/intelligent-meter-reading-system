@@ -2,7 +2,10 @@ package com.byy.meterreading.web.controller.admin;
 
 import com.byy.meterreading.auth.service.AdminUserService;
 import com.byy.meterreading.common.result.Result;
+import com.byy.meterreading.dto.user.AdminCreateUserDTO;
+import com.byy.meterreading.dto.user.AdminResetPasswordDTO;
 import com.byy.meterreading.dto.user.UpdateUserRolesDTO;
+import com.byy.meterreading.dto.user.UpdateUserProfileDTO;
 import com.byy.meterreading.dto.user.UpdateUserStatusDTO;
 import com.byy.meterreading.dto.user.UserPageQueryDTO;
 import com.byy.meterreading.vo.common.PageVO;
@@ -12,9 +15,11 @@ import org.springframework.security.authentication.AuthenticationCredentialsNotF
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +36,17 @@ public class AdminUserController {
 
     public AdminUserController(AdminUserService adminUserService) {
         this.adminUserService = adminUserService;
+    }
+
+    /**
+     * 创建用户并分配初始角色。
+     */
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<AdminUserVO> createUser(
+            @Valid @RequestBody AdminCreateUserDTO adminCreateUserDTO
+    ) {
+        return Result.success(adminUserService.createUser(adminCreateUserDTO));
     }
 
     /**
@@ -85,6 +101,44 @@ public class AdminUserController {
                 userId,
                 updateUserRolesDTO
         ));
+    }
+
+    /**
+     * 修改指定用户的显示名称。
+     */
+    @PutMapping("/{userId}/profile")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<AdminUserVO> updateUserProfile(
+            @PathVariable Long userId,
+            @Valid @RequestBody UpdateUserProfileDTO updateUserProfileDTO
+    ) {
+        return Result.success(adminUserService.updateUserProfile(
+                userId,
+                updateUserProfileDTO
+        ));
+    }
+
+    /**
+     * 重置指定用户的登录密码，并使其全部登录会话失效。
+     */
+    @PutMapping("/{userId}/password")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Void> resetUserPassword(
+            @PathVariable Long userId,
+            @Valid @RequestBody AdminResetPasswordDTO adminResetPasswordDTO
+    ) {
+        adminUserService.resetUserPassword(userId, adminResetPasswordDTO);
+        return Result.success(null);
+    }
+
+    /**
+     * 清除指定用户的登录失败次数和临时锁定状态。
+     */
+    @DeleteMapping("/{userId}/login-lock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Void> clearLoginLock(@PathVariable Long userId) {
+        adminUserService.clearLoginLock(userId);
+        return Result.success(null);
     }
 
     /**
