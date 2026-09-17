@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.ResidentMeterMapper">
+
+    <!-- 后台完整绑定列表需要同时读取居民、关系和表具三张表。 -->
+    <select id="selectBindingPage"
+            resultType="com.byy.meterreading.mapper.projection.ResidentMeterBindingRow">
+        SELECT u.id           AS resident_id,
+               u.username,
+               u.display_name,
+               u.status       AS resident_status,
+               m.id           AS meter_id,
+               m.meter_no,
+               m.meter_name,
+               m.meter_type,
+               m.display_type,
+               m.unit,
+               m.status       AS meter_status,
+               rm.created_by,
+               rm.created_at  AS bound_at
+        FROM resident_meter AS rm
+        INNER JOIN sys_user AS u
+                ON u.id = rm.resident_id
+        INNER JOIN meter AS m
+                ON m.id = rm.meter_id
+        WHERE m.deleted = 0
+        <if test="residentId != null">
+            AND rm.resident_id = #{residentId}
+        </if>
+        <if test="meterId != null">
+            AND rm.meter_id = #{meterId}
+        </if>
+        <if test="keyword != null">
+            AND (u.username LIKE CONCAT('%', #{keyword}, '%')
+                OR u.display_name LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY rm.created_at DESC,
+                 rm.resident_id DESC,
+                 rm.meter_id DESC
+    </select>
+
+    <!-- 指定居民和当前居民查询名下表具时只需要关系表和表具表。 -->
+    <select id="selectResidentMeterPage"
+            resultType="com.byy.meterreading.mapper.projection.ResidentBoundMeterRow">
+        SELECT m.id          AS meter_id,
+               m.meter_no,
+               m.meter_name,
+               m.meter_type,
+               m.display_type,
+               m.unit,
+               m.status,
+               m.version,
+               rm.created_at AS bound_at
+        FROM resident_meter AS rm
+        INNER JOIN meter AS m
+                ON m.id = rm.meter_id
+        WHERE rm.resident_id = #{residentId}
+          AND m.deleted = 0
+        <if test="keyword != null">
+            AND (m.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY rm.created_at DESC, rm.meter_id DESC
+    </select>
+
+    <!-- 查询指定表具绑定的居民时只需要关系表和用户表。 -->
+    <select id="selectMeterResidentPage"
+            resultType="com.byy.meterreading.mapper.projection.MeterBoundResidentRow">
+        SELECT u.id          AS resident_id,
+               u.username,
+               u.display_name,
+               u.status,
+               rm.created_at AS bound_at
+        FROM resident_meter AS rm
+        INNER JOIN sys_user AS u
+                ON u.id = rm.resident_id
+        WHERE rm.meter_id = #{meterId}
+        <if test="keyword != null">
+            AND (u.username LIKE CONCAT('%', #{keyword}, '%')
+                OR u.display_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY rm.created_at DESC, rm.resident_id DESC
+    </select>
+
+</mapper>
