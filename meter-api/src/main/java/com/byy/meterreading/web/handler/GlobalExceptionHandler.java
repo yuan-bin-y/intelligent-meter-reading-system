@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.handler;
 
 import com.byy.meterreading.auth.exception.RateLimitExceededException;
+import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.result.ApiErrorCode;
 import com.byy.meterreading.common.result.Result;
@@ -136,7 +137,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 数据库唯一索引冲突时返回资源冲突，注册场景中表示用户名已经存在。
+     * 已转换成安全业务信息的资源唯一性冲突返回 409。
+     */
+    @ExceptionHandler(ResourceConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<Void> handleResourceConflictException(
+            ResourceConflictException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.RESOURCE_CONFLICT,
+                exception.getMessage()
+        );
+    }
+
+    /**
+     * 未被业务层转换的数据库唯一索引异常只返回通用提示，避免暴露 SQL 细节。
      */
     @ExceptionHandler(DuplicateKeyException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
@@ -145,7 +160,7 @@ public class GlobalExceptionHandler {
     ) {
         return Result.failure(
                 ApiErrorCode.RESOURCE_CONFLICT,
-                "用户名已存在"
+                ApiErrorCode.RESOURCE_CONFLICT.getMessage()
         );
     }
 

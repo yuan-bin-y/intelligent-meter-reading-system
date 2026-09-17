@@ -2,6 +2,7 @@ package com.byy.meterreading.auth.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.auth.service.AdminUserService;
 import com.byy.meterreading.auth.service.RedisAuthProtectionService;
 import com.byy.meterreading.auth.token.RedisAuthSessionService;
@@ -64,7 +65,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         // 1. 预先检查用户名，数据库唯一索引继续负责并发场景兜底
         if (sysUserService.existsByUsername(username)) {
-            throw new DuplicateKeyException("用户名已存在");
+            throw new ResourceConflictException("用户名已存在");
         }
 
         // 2. 一次查询并校验管理员指定的全部角色
@@ -82,7 +83,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         try {
             sysUserService.createUser(user);
         } catch (DuplicateKeyException exception) {
-            throw new DuplicateKeyException("用户名已存在", exception);
+            throw new ResourceConflictException("用户名已存在", exception);
         }
 
         // 4. 使用回填的用户 ID 批量写入用户角色关系

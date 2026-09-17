@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: 智能抄表系统认证与用户管理接口
-  description: 当前认证和用户管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户查询、账号创建、资料与密码管理、状态与角色管理以及登录解锁接口。
-  version: 1.7.0
+  title: 智能抄表系统后端接口
+  description: 当前认证、用户管理和表具管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户管理以及表具档案创建接口。
+  version: 1.8.0
 
 servers:
   - url: http://localhost:8070
@@ -13,6 +13,8 @@ tags:
     description: 用户注册、登录、身份查询和密码管理接口
   - name: 用户管理
     description: 仅拥有 ADMIN 角色的用户可以访问的后台用户管理接口
+  - name: 表具管理
+    description: 表具档案管理接口；当前新增表具接口仅允许 ADMIN 访问
 
 paths:
   /api/v1/auth/register:
@@ -1133,6 +1135,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/meters:
+    post:
+      tags:
+        - 表具管理
+      summary: 新增表具
+      description: 新增一条表具档案。表具编号全局唯一；状态固定初始化为正常，乐观锁版本初始化为 0，创建人和修改人从已验证的 Access Token 中取得。仅 ADMIN 可访问。
+      operationId: createMeter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeterDTO'
+            example:
+              meterNo: WATER-2026-001
+              meterName: 1号水表
+              meterType: WATER
+              displayType: MECHANICAL_ROLLER
+              unit: m³
+              integerDigits: 6
+              decimalDigits: 2
+              initialReading: 12.35
+              installedAt: '2026-09-17'
+              remark: 测试表具
+      responses:
+        '200':
+          description: 新增成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMeterSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  meterId: 1
+                  meterNo: WATER-2026-001
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 字段校验失败，或者计量单位、初始读数不符合表具业务规则
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+              examples:
+                validationFailed:
+                  summary: 字段校验失败
+                  value:
+                    code: BAD_REQUEST
+                    message: 请求参数不正确
+                    data:
+                      integerDigits: 整数位数不能大于12
+                    traceId: 01JEXAMPLETRACEID
+                invalidUnit:
+                  summary: 表具类型和计量单位不匹配
+                  value:
+                    code: BAD_REQUEST
+                    message: 水表的计量单位必须是m³
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未携带 Access Token、Token 无效、已过期或 Redis 会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: AUTH_REQUIRED
+                message: 请先登录
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: FORBIDDEN
+                message: 无权限访问
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '409':
+          description: 表具编号已经存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_CONFLICT
+                message: 表具编号已存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1152,6 +1258,119 @@ components:
       example: 3
 
   schemas:
+    CreateMeterDTO:
+      type: object
+      required:
+        - meterNo
+        - meterName
+        - meterType
+        - displayType
+        - unit
+        - integerDigits
+        - decimalDigits
+        - initialReading
+      properties:
+        meterNo:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 全局唯一的表具编号；服务端会去除首尾空格，创建后不通过普通资料接口修改
+          example: WATER-2026-001
+        meterName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 表具名称；服务端会去除首尾空格
+          example: 1号水表
+        meterType:
+          type: string
+          enum:
+            - WATER
+            - ELECTRIC
+            - GAS
+          description: 表具测量类型
+          example: WATER
+        displayType:
+          type: string
+          enum:
+            - LCD
+            - MECHANICAL_ROLLER
+          description: 读数显示类型，分别表示液晶显示型和机械滚轮型
+          example: MECHANICAL_ROLLER
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 16
+          description: 标准计量单位；WATER 和 GAS 必须为 m³，ELECTRIC 必须为 kWh
+          example: m³
+        integerDigits:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: 表盘读数的整数位数
+          example: 6
+        decimalDigits:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: 表盘读数的小数位数
+          example: 2
+        initialReading:
+          type: number
+          minimum: 0
+          multipleOf: 0.001
+          description: 安装初始读数；最多 15 位整数和 3 位小数，并且必须符合当前表盘位数
+          example: 12.35
+        installedAt:
+          type: string
+          format: date
+          nullable: true
+          description: 安装日期，可不传；传入时不能晚于今天
+          example: '2026-09-17'
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 备注；服务端会去除首尾空格，纯空白按 null 保存
+          example: 测试表具
+
+    CreateMeterVO:
+      type: object
+      required:
+        - meterId
+        - meterNo
+      properties:
+        meterId:
+          type: integer
+          format: int64
+          description: MySQL 生成的表具主键
+          example: 1
+        meterNo:
+          type: string
+          description: 创建成功的表具编号
+          example: WATER-2026-001
+
+    CreateMeterSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/CreateMeterVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     AdminCreateUserDTO:
       type: object
       required:

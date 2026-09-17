@@ -29,6 +29,13 @@
                 <version>${mybatis-plus.version}</version>
             </dependency>
 
+            <!-- MyBatis-Plus 实体注解 -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-annotation</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
             <!-- MyBatis-Plus 分页插件依赖的 SQL 解析模块 -->
             <dependency>
                 <groupId>com.baomidou</groupId>

@@ -6,6 +6,7 @@ import com.byy.meterreading.auth.service.RedisAuthProtectionService;
 import com.byy.meterreading.auth.token.IssuedTokenPair;
 import com.byy.meterreading.auth.token.JwtTokenService;
 import com.byy.meterreading.auth.token.RedisAuthSessionService;
+import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.dto.auth.ChangePasswordDTO;
 import com.byy.meterreading.dto.auth.LoginDTO;
 import com.byy.meterreading.dto.auth.RefreshTokenDTO;
@@ -232,7 +233,7 @@ public class AuthServiceImpl implements AuthService {
 
         // 2. 注册前检查用户名，避免正常情况下触发数据库唯一索引异常
         if (sysUserService.existsByUsername(username)) {
-            throw new DuplicateKeyException("用户名已存在");
+            throw new ResourceConflictException("用户名已存在");
         }
 
         // 3. 使用 BCrypt 加密明文密码，数据库中只保存密码哈希
@@ -250,7 +251,7 @@ public class AuthServiceImpl implements AuthService {
             sysUserService.createUser(user);
         } catch (DuplicateKeyException exception) {
             // 两个同名注册请求可能同时通过预查询，最终由数据库唯一索引兜底
-            throw new DuplicateKeyException("用户名已存在", exception);
+            throw new ResourceConflictException("用户名已存在", exception);
         }
 
         // 5. 查询系统预置且处于启用状态的居民角色
