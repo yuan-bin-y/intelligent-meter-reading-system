@@ -1,6 +1,5 @@
 package com.byy.meterreading.dto.user;
 
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -39,7 +38,6 @@ public record AdminCreateUserDTO(
         Integer status,
 
         @NotEmpty(message = "用户角色不能为空")
-        @Valid
         List<
                 @NotBlank(message = "角色编码不能为空")
                 @Size(max = 64, message = "角色编码长度不能超过64个字符")

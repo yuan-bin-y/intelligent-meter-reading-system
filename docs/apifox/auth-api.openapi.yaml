@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统认证与用户管理接口
-  description: 当前认证和用户管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户查询、状态管理和角色管理接口。
-  version: 1.6.0
+  description: 当前认证和用户管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户查询、账号创建、资料与密码管理、状态与角色管理以及登录解锁接口。
+  version: 1.7.0
 
 servers:
   - url: http://localhost:8070
@@ -448,6 +448,101 @@ paths:
                 traceId: 01JEXAMPLETRACEID
 
   /api/v1/admin/users:
+    post:
+      tags:
+        - 用户管理
+      summary: 管理员创建用户
+      description: 创建用户、使用 BCrypt 保存密码哈希，并在同一数据库事务中批量绑定初始角色。仅 ADMIN 可访问。
+      operationId: createAdminUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCreateUserDTO'
+            example:
+              username: reader01
+              password: '12345678'
+              displayName: 抄表员张三
+              status: 1
+              roles:
+                - METER_READER
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 4
+                  username: reader01
+                  displayName: 抄表员张三
+                  status: 1
+                  roles:
+                    - METER_READER
+                  createdAt: '2026-09-16T12:00:00'
+                  updatedAt: '2026-09-16T12:00:00'
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 用户名、密码、显示名称、状态或角色参数校验失败，或者包含不存在、已禁用的角色
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+              examples:
+                validationFailed:
+                  summary: 请求字段校验失败
+                  value:
+                    code: BAD_REQUEST
+                    message: 请求参数不正确
+                    data:
+                      password: 密码长度必须为8到128个字符
+                    traceId: 01JEXAMPLETRACEID
+                invalidRole:
+                  summary: 角色不存在或已禁用
+                  value:
+                    code: BAD_REQUEST
+                    message: 角色不存在或已禁用：UNKNOWN_ROLE
+                    data: null
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 用户名已经存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_CONFLICT
+                message: 用户名已存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误，数据库事务会回滚
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
     get:
       tags:
         - 用户管理
@@ -801,6 +896,243 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/users/{userId}/profile:
+    put:
+      tags:
+        - 用户管理
+      summary: 修改用户基本资料
+      description: 修改指定用户的显示名称和更新时间。当前版本不允许修改登录用户名，仅 ADMIN 可访问。
+      operationId: updateAdminUserProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserProfileDTO'
+            example:
+              displayName: 抄表员李四
+      responses:
+        '200':
+          description: 修改成功；显示名称没有变化时直接返回当前用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  userId: 4
+                  username: reader01
+                  displayName: 抄表员李四
+                  status: 1
+                  roles:
+                    - METER_READER
+                  createdAt: '2026-09-16T12:00:00'
+                  updatedAt: '2026-09-16T13:00:00'
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 显示名称为空或超过 64 个字符
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: 用户不存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/users/{userId}/password:
+    put:
+      tags:
+        - 用户管理
+      summary: 管理员重置用户密码
+      description: 使用 BCrypt 保存新密码，成功后撤销该用户全部 Access Token 和 Refresh Token 会话。支持重置启用或禁用用户的密码。
+      operationId: resetAdminUserPassword
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminResetPasswordDTO'
+            example:
+              newPassword: newPassword123
+      responses:
+        '200':
+          description: 密码重置成功，该用户全部设备均需重新登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+              example:
+                code: OK
+                message: success
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 新密码为空或长度不是 8 到 128 个字符
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          description: 服务器内部错误，包括 Redis 会话清理失败；发生异常时数据库密码更新会回滚
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/users/{userId}/login-lock:
+    delete:
+      tags:
+        - 用户管理
+      summary: 解除用户登录锁定
+      description: 删除 Redis 中该用户名对应的登录失败次数和临时锁定状态。Redis 删除失败时返回 500，不返回虚假的成功结果。
+      operationId: clearAdminUserLoginLock
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: 解锁成功；用户当前未锁定时也返回成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+              example:
+                code: OK
+                message: success
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          description: Redis 不可用或服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/roles:
+    get:
+      tags:
+        - 用户管理
+      summary: 查询可分配角色
+      description: 查询 sys_role 中全部启用角色，供创建用户和修改角色时选择，仅 ADMIN 可访问。
+      operationId: listAssignableRoles
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignableRoleListSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  - roleId: 1
+                    roleCode: ADMIN
+                    roleName: 管理员
+                  - roleId: 2
+                    roleCode: METER_READER
+                    roleName: 抄表员
+                  - roleId: 3
+                    roleCode: AUDITOR
+                    roleName: 审核员
+                  - roleId: 4
+                    roleCode: RESIDENT
+                    roleName: 居民
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已经失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -820,6 +1152,122 @@ components:
       example: 3
 
   schemas:
+    AdminCreateUserDTO:
+      type: object
+      required:
+        - username
+        - password
+        - displayName
+        - status
+        - roles
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 登录用户名，服务端会去除首尾空格，不能与已有用户重复
+          example: reader01
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: 初始明文密码，仅通过 HTTPS 传输，服务端只保存 BCrypt 哈希
+          example: '12345678'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 用户显示名称，服务端会去除首尾空格
+          example: 抄表员张三
+        status:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: 初始状态，0 禁用，1 启用
+          example: 1
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: 初始角色编码；服务端会去除首尾空格、转成大写并去重
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+          example:
+            - METER_READER
+
+    UpdateUserProfileDTO:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 新的用户显示名称
+          example: 抄表员李四
+
+    AdminResetPasswordDTO:
+      type: object
+      required:
+        - newPassword
+      properties:
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: 管理员为目标用户设置的新明文密码
+          example: newPassword123
+
+    AssignableRoleVO:
+      type: object
+      required:
+        - roleId
+        - roleCode
+        - roleName
+      properties:
+        roleId:
+          type: integer
+          format: int64
+          description: 角色 ID
+          example: 2
+        roleCode:
+          type: string
+          description: 角色编码
+          example: METER_READER
+        roleName:
+          type: string
+          description: 角色名称
+          example: 抄表员
+
+    AssignableRoleListSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignableRoleVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
     UpdateUserStatusDTO:
       type: object
       required:

@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -67,6 +68,20 @@ public class GlobalExceptionHandler {
         return Result.failure(
                 ApiErrorCode.RATE_LIMITED,
                 exception.getMessage()
+        );
+    }
+
+    /**
+     * 处理 @PreAuthorize 等方法级权限校验失败。
+     */
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Result<Void> handleAuthorizationDeniedException(
+            AuthorizationDeniedException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.FORBIDDEN,
+                ApiErrorCode.FORBIDDEN.getMessage()
         );
     }
 
