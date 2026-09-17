@@ -3,6 +3,7 @@ package com.byy.meterreading.web.handler;
 import com.byy.meterreading.auth.exception.RateLimitExceededException;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.common.exception.VersionConflictException;
 import com.byy.meterreading.common.result.ApiErrorCode;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.common.trace.TraceIdContext;
@@ -13,7 +14,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -122,6 +126,35 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 请求体包含非法枚举、错误日期、字段类型不匹配或无效 JSON 时返回 400。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.BAD_REQUEST,
+                "请求体格式不正确"
+        );
+    }
+
+    /**
+     * 查询参数缺失，或路径、查询参数无法转换成目标类型时返回 400。
+     */
+    @ExceptionHandler({
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class
+    })
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleRequestParameterException(Exception exception) {
+        return Result.failure(
+                ApiErrorCode.BAD_REQUEST,
+                "请求参数不正确"
+        );
+    }
+
+    /**
      * 处理已经通过字段校验，但不满足业务规则的请求参数。
      * 例如原密码错误，或者新密码与原密码相同。
      */
@@ -146,6 +179,20 @@ public class GlobalExceptionHandler {
     ) {
         return Result.failure(
                 ApiErrorCode.RESOURCE_CONFLICT,
+                exception.getMessage()
+        );
+    }
+
+    /**
+     * 乐观锁版本已经过期时提示客户端刷新后重试。
+     */
+    @ExceptionHandler(VersionConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<Void> handleVersionConflictException(
+            VersionConflictException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.VERSION_CONFLICT,
                 exception.getMessage()
         );
     }

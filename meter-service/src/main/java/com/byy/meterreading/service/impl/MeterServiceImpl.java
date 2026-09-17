@@ -1,14 +1,28 @@
 package com.byy.meterreading.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.common.exception.ResourceConflictException;
+import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.common.exception.VersionConflictException;
 import com.byy.meterreading.dto.meter.CreateMeterDTO;
+import com.byy.meterreading.dto.meter.MeterPageQueryDTO;
+import com.byy.meterreading.dto.meter.UpdateMeterDTO;
+import com.byy.meterreading.dto.meter.UpdateMeterStatusDTO;
 import com.byy.meterreading.mapper.MeterMapper;
 import com.byy.meterreading.model.Meter;
+import com.byy.meterreading.model.enums.MeterDisplayType;
 import com.byy.meterreading.model.enums.MeterStatus;
 import com.byy.meterreading.model.enums.MeterType;
 import com.byy.meterreading.service.MeterService;
+import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meter.CreateMeterVO;
+import com.byy.meterreading.vo.meter.MeterDetailVO;
+import com.byy.meterreading.vo.meter.MeterListItemVO;
+import com.byy.meterreading.vo.meter.MeterVersionVO;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
@@ -98,11 +112,286 @@ public class MeterServiceImpl implements MeterService {
         return new CreateMeterVO(meter.getId(), meter.getMeterNo());
     }
 
+    /**
+     * 使用 MyBatis-Plus 动态条件和分页插件查询未删除表具。
+     */
+    @Override
+    public PageVO<MeterListItemVO> listMeters(
+            MeterPageQueryDTO queryDTO
+    ) {
+        LambdaQueryWrapper<Meter> queryWrapper =
+                Wrappers.<Meter>lambdaQuery()
+                        .and(queryDTO.keyword() != null, wrapper -> wrapper
+                                .like(Meter::getMeterNo, queryDTO.keyword())
+                                .or()
+                                .like(Meter::getMeterName, queryDTO.keyword())
+                        )
+                        .eq(queryDTO.meterType() != null,
+                                Meter::getMeterType,
+                                queryDTO.meterType() == null
+                                        ? null
+                                        : queryDTO.meterType().name())
+                        .eq(queryDTO.displayType() != null,
+                                Meter::getDisplayType,
+                                queryDTO.displayType() == null
+                                        ? null
+                                        : queryDTO.displayType().name())
+                        .eq(queryDTO.status() != null,
+                                Meter::getStatus,
+                                queryDTO.status())
+                        .orderByDesc(Meter::getCreatedAt)
+                        .orderByDesc(Meter::getId);
+
+        Page<Meter> page = new Page<>(
+                queryDTO.page(),
+                queryDTO.pageSize()
+        );
+        IPage<Meter> meterPage = meterMapper.selectPage(
+                page,
+                queryWrapper
+        );
+
+        return new PageVO<>(
+                meterPage.getRecords().stream()
+                        .map(this::toListItemVO)
+                        .toList(),
+                meterPage.getTotal(),
+                meterPage.getCurrent(),
+                meterPage.getSize()
+        );
+    }
+
+    @Override
+    public MeterDetailVO getMeter(Long meterId) {
+        return toDetailVO(requireMeter(meterId));
+    }
+
+    /**
+     * 修改表具基础资料，使用版本号条件保证并发更新不会互相覆盖。
+     */
+    @Override
+    public MeterVersionVO updateMeter(
+            Long operatorId,
+            Long meterId,
+            UpdateMeterDTO updateMeterDTO
+    ) {
+        requireOperatorId(operatorId);
+        Meter currentMeter = requireMeter(meterId);
+        requireExpectedVersion(currentMeter, updateMeterDTO.version());
+
+        MeterStatus currentStatus = MeterStatus.fromCode(
+                currentMeter.getStatus()
+        );
+        if (currentStatus == MeterStatus.SCRAPPED) {
+            throw new IllegalArgumentException("已报废表具不能修改资料");
+        }
+
+        String meterName = updateMeterDTO.meterName().trim();
+        String unit = updateMeterDTO.unit().trim();
+        String remark = normalizeOptionalText(updateMeterDTO.remark());
+        validateUnit(updateMeterDTO.meterType(), unit);
+        validateReadingDigits(
+                updateMeterDTO.initialReading(),
+                updateMeterDTO.integerDigits(),
+                updateMeterDTO.decimalDigits()
+        );
+
+        LambdaUpdateWrapper<Meter> updateWrapper =
+                Wrappers.<Meter>lambdaUpdate()
+                        .set(Meter::getMeterName, meterName)
+                        .set(Meter::getMeterType,
+                                updateMeterDTO.meterType().name())
+                        .set(Meter::getDisplayType,
+                                updateMeterDTO.displayType().name())
+                        .set(Meter::getUnit, unit)
+                        .set(Meter::getIntegerDigits,
+                                updateMeterDTO.integerDigits())
+                        .set(Meter::getDecimalDigits,
+                                updateMeterDTO.decimalDigits())
+                        .set(Meter::getInitialReading,
+                                updateMeterDTO.initialReading())
+                        .set(Meter::getInstalledAt,
+                                updateMeterDTO.installedAt())
+                        .set(Meter::getRemark, remark)
+                        .set(Meter::getUpdatedBy, operatorId)
+                        .setSql("version = version + 1")
+                        .eq(Meter::getId, meterId)
+                        .eq(Meter::getVersion, updateMeterDTO.version());
+
+        int updatedRows = meterMapper.update(null, updateWrapper);
+        ensureUpdated(updatedRows, meterId);
+        return new MeterVersionVO(
+                meterId,
+                updateMeterDTO.version() + 1
+        );
+    }
+
+    /**
+     * 校验生命周期流转后，按版本号原子更新表具状态。
+     */
+    @Override
+    public MeterVersionVO updateMeterStatus(
+            Long operatorId,
+            Long meterId,
+            UpdateMeterStatusDTO updateMeterStatusDTO
+    ) {
+        requireOperatorId(operatorId);
+        Meter currentMeter = requireMeter(meterId);
+        requireExpectedVersion(
+                currentMeter,
+                updateMeterStatusDTO.version()
+        );
+
+        MeterStatus currentStatus = MeterStatus.fromCode(
+                currentMeter.getStatus()
+        );
+        MeterStatus targetStatus = MeterStatus.fromCode(
+                updateMeterStatusDTO.status()
+        );
+        if (!currentStatus.canTransitionTo(targetStatus)) {
+            throw new IllegalArgumentException(
+                    "不允许将表具状态从"
+                            + currentStatus.getDescription()
+                            + "修改为"
+                            + targetStatus.getDescription()
+            );
+        }
+
+        LambdaUpdateWrapper<Meter> updateWrapper =
+                Wrappers.<Meter>lambdaUpdate()
+                        .set(Meter::getStatus, targetStatus.getCode())
+                        .set(Meter::getUpdatedBy, operatorId)
+                        .setSql("version = version + 1")
+                        .eq(Meter::getId, meterId)
+                        .eq(Meter::getVersion,
+                                updateMeterStatusDTO.version());
+
+        int updatedRows = meterMapper.update(null, updateWrapper);
+        ensureUpdated(updatedRows, meterId);
+        return new MeterVersionVO(
+                meterId,
+                updateMeterStatusDTO.version() + 1
+        );
+    }
+
+    /**
+     * 当前仅允许删除停用表具；后续绑定和抄表表建立后继续增加关联检查。
+     */
+    @Override
+    public void deleteMeter(
+            Long operatorId,
+            Long meterId,
+            Integer version
+    ) {
+        requireOperatorId(operatorId);
+        if (version == null || version < 0) {
+            throw new IllegalArgumentException("数据版本不能为空且不能小于0");
+        }
+
+        Meter currentMeter = requireMeter(meterId);
+        requireExpectedVersion(currentMeter, version);
+        if (MeterStatus.fromCode(currentMeter.getStatus())
+                != MeterStatus.DISABLED) {
+            throw new IllegalArgumentException("只有停用状态的表具可以删除");
+        }
+
+        LambdaUpdateWrapper<Meter> updateWrapper =
+                Wrappers.<Meter>lambdaUpdate()
+                        .set(Meter::getDeleted, 1)
+                        .set(Meter::getUpdatedBy, operatorId)
+                        .setSql("version = version + 1")
+                        .eq(Meter::getId, meterId)
+                        .eq(Meter::getVersion, version);
+
+        int updatedRows = meterMapper.update(null, updateWrapper);
+        ensureUpdated(updatedRows, meterId);
+    }
+
     private boolean existsByMeterNo(String meterNo) {
         return meterMapper.selectCount(
                 Wrappers.<Meter>lambdaQuery()
                         .eq(Meter::getMeterNo, meterNo)
         ) > 0;
+    }
+
+    private Meter requireMeter(Long meterId) {
+        if (meterId == null || meterId <= 0) {
+            throw new IllegalArgumentException("表具ID必须大于0");
+        }
+        Meter meter = meterMapper.selectById(meterId);
+        if (meter == null) {
+            throw new ResourceNotFoundException("表具不存在");
+        }
+        return meter;
+    }
+
+    private void requireOperatorId(Long operatorId) {
+        if (operatorId == null) {
+            throw new IllegalArgumentException("当前操作人不能为空");
+        }
+    }
+
+    private void requireExpectedVersion(
+            Meter meter,
+            Integer expectedVersion
+    ) {
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw new IllegalArgumentException("数据版本不能为空且不能小于0");
+        }
+        if (!expectedVersion.equals(meter.getVersion())) {
+            throw new VersionConflictException(
+                    "表具信息已被其他用户修改，请刷新后重试"
+            );
+        }
+    }
+
+    private void ensureUpdated(int updatedRows, Long meterId) {
+        if (updatedRows == 1) {
+            return;
+        }
+        Meter latestMeter = meterMapper.selectById(meterId);
+        if (latestMeter == null) {
+            throw new ResourceNotFoundException("表具不存在");
+        }
+        throw new VersionConflictException(
+                "表具信息已被其他用户修改，请刷新后重试"
+        );
+    }
+
+    private MeterListItemVO toListItemVO(Meter meter) {
+        return new MeterListItemVO(
+                meter.getId(),
+                meter.getMeterNo(),
+                meter.getMeterName(),
+                MeterType.valueOf(meter.getMeterType()),
+                MeterDisplayType.valueOf(meter.getDisplayType()),
+                meter.getUnit(),
+                meter.getStatus(),
+                meter.getVersion(),
+                meter.getUpdatedAt()
+        );
+    }
+
+    private MeterDetailVO toDetailVO(Meter meter) {
+        return new MeterDetailVO(
+                meter.getId(),
+                meter.getMeterNo(),
+                meter.getMeterName(),
+                MeterType.valueOf(meter.getMeterType()),
+                MeterDisplayType.valueOf(meter.getDisplayType()),
+                meter.getUnit(),
+                meter.getIntegerDigits(),
+                meter.getDecimalDigits(),
+                meter.getInitialReading(),
+                meter.getInstalledAt(),
+                meter.getStatus(),
+                meter.getVersion(),
+                meter.getRemark(),
+                meter.getCreatedBy(),
+                meter.getUpdatedBy(),
+                meter.getCreatedAt(),
+                meter.getUpdatedAt()
+        );
     }
 
     private void validateUnit(MeterType meterType, String unit) {
