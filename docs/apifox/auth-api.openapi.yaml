@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定和设备管理模块的 Apifox 测试文档。
-  version: 2.1.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理和设备表具绑定模块的 Apifox 测试文档。
+  version: 2.2.0
 
 servers:
   - url: http://localhost:8070
@@ -19,6 +19,8 @@ tags:
     description: 管理员维护居民与表具关系，以及居民查询本人名下表具的接口
   - name: 设备管理
     description: 采集设备档案新增、分页、详情、修改、启停和逻辑删除接口，仅允许 ADMIN 访问
+  - name: 设备表具绑定
+    description: 管理员维护采集设备与表具的多对多绑定关系
 
 paths:
   /api/v1/auth/register:
@@ -1453,7 +1455,7 @@ paths:
       tags:
         - 表具管理
       summary: 删除表具
-      description: 仅允许逻辑删除停用状态的表具；version 必须与数据库一致。删除后普通查询不可见，数据库记录保留。仅 ADMIN 可访问。
+      description: 仅允许逻辑删除停用且没有居民、设备绑定关系的表具；version 必须与数据库一致。删除后普通查询不可见，数据库记录保留。仅 ADMIN 可访问。
       operationId: deleteMeter
       security:
         - bearerAuth: []
@@ -1498,7 +1500,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
         '409':
-          description: version 已过期
+          description: version 已过期，或者表具仍绑定居民或设备
           content:
             application/json:
               schema:
@@ -1784,7 +1786,7 @@ paths:
       tags:
         - 设备管理
       summary: 逻辑删除设备
-      description: 只有停用设备可以删除，并校验 version。设备表具绑定完成后将继续增加绑定关系检查。仅 ADMIN 可访问。
+      description: 只有停用且没有表具绑定关系的设备可以删除，并校验 version。仅 ADMIN 可访问。
       operationId: deleteDevice
       security:
         - bearerAuth: []
@@ -1827,7 +1829,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
         '409':
-          description: version 已过期
+          description: version 已过期，或者设备仍绑定表具
           content:
             application/json:
               schema:
@@ -2244,6 +2246,265 @@ paths:
                 $ref: '#/components/schemas/ErrorResult'
         '403':
           description: 当前用户没有 RESIDENT 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/device-meters:
+    post:
+      tags:
+        - 设备表具绑定
+      summary: 设备绑定表具
+      description: 只有启用设备和正常表具可以绑定；联合主键保证同一关系不会重复创建。仅 ADMIN 可访问。
+      operationId: bindDeviceMeter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BindDeviceMeterDTO'
+            example:
+              deviceId: 1
+              meterId: 1
+      responses:
+        '200':
+          description: 绑定成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceMeterBindingSuccessResult'
+        '400':
+          description: 参数错误、设备未启用或表具不是正常状态
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备或表具不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 设备已经绑定该表具
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+    get:
+      tags:
+        - 设备表具绑定
+      summary: 分页查询全部设备表具绑定关系
+      description: 使用 device_meter、device、meter 三表 JOIN，可按设备、表具和关键字筛选。仅 ADMIN 可访问。
+      operationId: listDeviceMeterBindings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - name: keyword
+          in: query
+          description: 匹配设备编号、设备名称、表具编号或表具名称
+          schema:
+            type: string
+            maxLength: 64
+        - name: deviceId
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: meterId
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceMeterBindingPageSuccessResult'
+        '400':
+          description: 分页或筛选参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/device-meters/{deviceId}/{meterId}:
+    delete:
+      tags:
+        - 设备表具绑定
+      summary: 解除设备表具绑定
+      description: 删除指定的中间表关系。仅 ADMIN 可访问。
+      operationId: unbindDeviceMeter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/MeterIdPath'
+      responses:
+        '200':
+          description: 解绑成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+        '400':
+          description: 路径参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 绑定关系不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/devices/{deviceId}/meters:
+    get:
+      tags:
+        - 设备表具绑定
+      summary: 查询指定设备绑定的表具
+      description: 使用 device_meter 和 meter 两表 JOIN 分页查询。仅 ADMIN 可访问。
+      operationId: listDeviceMeters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - name: keyword
+          in: query
+          description: 匹配表具编号或表具名称
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceBoundMeterPageSuccessResult'
+        '400':
+          description: 查询参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meters/{meterId}/devices:
+    get:
+      tags:
+        - 设备表具绑定
+      summary: 查询指定表具绑定的设备
+      description: 使用 device_meter 和 device 两表 JOIN 分页查询。仅 ADMIN 可访问。
+      operationId: listMeterDevices
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MeterIdPath'
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - name: keyword
+          in: query
+          description: 匹配设备编号或设备名称
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterBoundDevicePageSuccessResult'
+        '400':
+          description: 查询参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 表具不存在
           content:
             application/json:
               schema:
@@ -2992,6 +3253,239 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/DeviceVersionVO'
+        traceId:
+          type: string
+
+    BindDeviceMeterDTO:
+      type: object
+      required: [deviceId, meterId]
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 启用状态的设备 ID
+        meterId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 正常状态的表具 ID
+
+    DeviceMeterBindingVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+        - deviceName
+        - deviceType
+        - deviceStatus
+        - meterId
+        - meterNo
+        - meterName
+        - meterType
+        - displayType
+        - unit
+        - meterStatus
+        - createdBy
+        - boundAt
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        deviceNo:
+          type: string
+        deviceName:
+          type: string
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        deviceStatus:
+          type: integer
+          enum: [0, 1]
+          description: 0 停用，1 启用
+        meterId:
+          type: integer
+          format: int64
+        meterNo:
+          type: string
+        meterName:
+          type: string
+        meterType:
+          $ref: '#/components/schemas/MeterType'
+        displayType:
+          $ref: '#/components/schemas/MeterDisplayType'
+        unit:
+          type: string
+        meterStatus:
+          type: integer
+          enum: [0, 1, 2, 3]
+          description: 0 停用，1 正常，2 维护中，3 已报废
+        createdBy:
+          type: integer
+          format: int64
+          description: 创建绑定关系的管理员 ID
+        boundAt:
+          type: string
+          format: date-time
+
+    DeviceBoundMeterVO:
+      type: object
+      required: [meterId, meterNo, meterName, meterType, displayType, unit, status, version, boundAt]
+      properties:
+        meterId:
+          type: integer
+          format: int64
+        meterNo:
+          type: string
+        meterName:
+          type: string
+        meterType:
+          $ref: '#/components/schemas/MeterType'
+        displayType:
+          $ref: '#/components/schemas/MeterDisplayType'
+        unit:
+          type: string
+        status:
+          type: integer
+          enum: [0, 1, 2, 3]
+        version:
+          type: integer
+        boundAt:
+          type: string
+          format: date-time
+
+    MeterBoundDeviceVO:
+      type: object
+      required: [deviceId, deviceNo, deviceName, deviceType, status, version, boundAt]
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        deviceNo:
+          type: string
+        deviceName:
+          type: string
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        status:
+          type: integer
+          enum: [0, 1]
+        version:
+          type: integer
+        boundAt:
+          type: string
+          format: date-time
+
+    DeviceMeterBindingPageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceMeterBindingVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    DeviceBoundMeterPageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceBoundMeterVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    MeterBoundDevicePageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeterBoundDeviceVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    DeviceMeterBindingSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceMeterBindingVO'
+        traceId:
+          type: string
+
+    DeviceMeterBindingPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceMeterBindingPageVO'
+        traceId:
+          type: string
+
+    DeviceBoundMeterPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceBoundMeterPageVO'
+        traceId:
+          type: string
+
+    MeterBoundDevicePageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterBoundDevicePageVO'
         traceId:
           type: string
 

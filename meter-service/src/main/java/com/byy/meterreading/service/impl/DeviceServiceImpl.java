@@ -17,6 +17,7 @@ import com.byy.meterreading.model.Device;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.model.enums.DeviceType;
 import com.byy.meterreading.service.DeviceService;
+import com.byy.meterreading.service.DeviceMeterService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
@@ -32,9 +33,14 @@ import org.springframework.stereotype.Service;
 public class DeviceServiceImpl implements DeviceService {
 
     private final DeviceMapper deviceMapper;
+    private final DeviceMeterService deviceMeterService;
 
-    public DeviceServiceImpl(DeviceMapper deviceMapper) {
+    public DeviceServiceImpl(
+            DeviceMapper deviceMapper,
+            DeviceMeterService deviceMeterService
+    ) {
         this.deviceMapper = deviceMapper;
+        this.deviceMeterService = deviceMeterService;
     }
 
     /**
@@ -174,7 +180,7 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 当前要求设备先停用再逻辑删除；设备绑定模块完成后继续增加绑定检查。
+     * 设备必须先停用且解除全部表具绑定后才能逻辑删除。
      */
     @Override
     public void deleteDevice(
@@ -191,6 +197,11 @@ public class DeviceServiceImpl implements DeviceService {
         if (!Integer.valueOf(DeviceStatus.DISABLED.getCode())
                 .equals(currentDevice.getStatus())) {
             throw new IllegalArgumentException("只有停用状态的设备可以删除");
+        }
+        if (deviceMeterService.hasBindingsByDeviceId(deviceId)) {
+            throw new ResourceConflictException(
+                    "设备仍绑定表具，不能删除"
+            );
         }
 
         LambdaUpdateWrapper<Device> updateWrapper =

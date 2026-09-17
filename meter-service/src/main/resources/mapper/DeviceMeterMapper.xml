@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.DeviceMeterMapper">
+
+    <!-- 后台完整绑定列表同时读取设备、关系和表具三张表。 -->
+    <select id="selectBindingPage"
+            resultType="com.byy.meterreading.mapper.projection.DeviceMeterBindingRow">
+        SELECT d.id           AS device_id,
+               d.device_no,
+               d.device_name,
+               d.device_type,
+               d.status       AS device_status,
+               m.id           AS meter_id,
+               m.meter_no,
+               m.meter_name,
+               m.meter_type,
+               m.display_type,
+               m.unit,
+               m.status       AS meter_status,
+               dm.created_by,
+               dm.created_at  AS bound_at
+        FROM device_meter AS dm
+        INNER JOIN device AS d
+                ON d.id = dm.device_id
+               AND d.deleted = 0
+        INNER JOIN meter AS m
+                ON m.id = dm.meter_id
+               AND m.deleted = 0
+        WHERE 1 = 1
+        <if test="deviceId != null">
+            AND dm.device_id = #{deviceId}
+        </if>
+        <if test="meterId != null">
+            AND dm.meter_id = #{meterId}
+        </if>
+        <if test="keyword != null">
+            AND (d.device_no LIKE CONCAT('%', #{keyword}, '%')
+                OR d.device_name LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY dm.created_at DESC,
+                 dm.device_id DESC,
+                 dm.meter_id DESC
+    </select>
+
+    <!-- 查询指定设备绑定的表具。 -->
+    <select id="selectDeviceMeterPage"
+            resultType="com.byy.meterreading.mapper.projection.DeviceBoundMeterRow">
+        SELECT m.id          AS meter_id,
+               m.meter_no,
+               m.meter_name,
+               m.meter_type,
+               m.display_type,
+               m.unit,
+               m.status,
+               m.version,
+               dm.created_at AS bound_at
+        FROM device_meter AS dm
+        INNER JOIN meter AS m
+                ON m.id = dm.meter_id
+               AND m.deleted = 0
+        WHERE dm.device_id = #{deviceId}
+        <if test="keyword != null">
+            AND (m.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR m.meter_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY dm.created_at DESC, dm.meter_id DESC
+    </select>
+
+    <!-- 查询指定表具绑定的设备。 -->
+    <select id="selectMeterDevicePage"
+            resultType="com.byy.meterreading.mapper.projection.MeterBoundDeviceRow">
+        SELECT d.id          AS device_id,
+               d.device_no,
+               d.device_name,
+               d.device_type,
+               d.status,
+               d.version,
+               dm.created_at AS bound_at
+        FROM device_meter AS dm
+        INNER JOIN device AS d
+                ON d.id = dm.device_id
+               AND d.deleted = 0
+        WHERE dm.meter_id = #{meterId}
+        <if test="keyword != null">
+            AND (d.device_no LIKE CONCAT('%', #{keyword}, '%')
+                OR d.device_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY dm.created_at DESC, dm.device_id DESC
+    </select>
+
+</mapper>

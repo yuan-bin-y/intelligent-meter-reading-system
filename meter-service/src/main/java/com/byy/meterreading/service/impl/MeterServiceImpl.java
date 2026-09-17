@@ -19,6 +19,7 @@ import com.byy.meterreading.model.enums.MeterStatus;
 import com.byy.meterreading.model.enums.MeterType;
 import com.byy.meterreading.service.MeterService;
 import com.byy.meterreading.service.ResidentMeterService;
+import com.byy.meterreading.service.DeviceMeterService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meter.CreateMeterVO;
 import com.byy.meterreading.vo.meter.MeterDetailVO;
@@ -44,13 +45,16 @@ public class MeterServiceImpl implements MeterService {
 
     private final MeterMapper meterMapper;
     private final ResidentMeterService residentMeterService;
+    private final DeviceMeterService deviceMeterService;
 
     public MeterServiceImpl(
             MeterMapper meterMapper,
-            ResidentMeterService residentMeterService
+            ResidentMeterService residentMeterService,
+            DeviceMeterService deviceMeterService
     ) {
         this.meterMapper = meterMapper;
         this.residentMeterService = residentMeterService;
+        this.deviceMeterService = deviceMeterService;
     }
 
     /**
@@ -281,7 +285,7 @@ public class MeterServiceImpl implements MeterService {
     }
 
     /**
-     * 当前仅允许删除停用表具；后续绑定和抄表表建立后继续增加关联检查。
+     * 表具必须停用，并解除居民和设备绑定后才能逻辑删除。
      */
     @Override
     public void deleteMeter(
@@ -303,6 +307,11 @@ public class MeterServiceImpl implements MeterService {
         if (residentMeterService.hasBindingsByMeterId(meterId)) {
             throw new ResourceConflictException(
                     "表具仍绑定居民，不能删除"
+            );
+        }
+        if (deviceMeterService.hasBindingsByMeterId(meterId)) {
+            throw new ResourceConflictException(
+                    "表具仍绑定设备，不能删除"
             );
         }
 
