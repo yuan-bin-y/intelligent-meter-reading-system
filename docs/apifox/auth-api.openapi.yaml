@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理和居民表具绑定模块的 Apifox 测试文档。
-  version: 2.0.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定和设备管理模块的 Apifox 测试文档。
+  version: 2.1.0
 
 servers:
   - url: http://localhost:8070
@@ -17,6 +17,8 @@ tags:
     description: 表具档案新增、分页、详情、修改、状态流转和逻辑删除接口，仅允许 ADMIN 访问
   - name: 居民表具绑定
     description: 管理员维护居民与表具关系，以及居民查询本人名下表具的接口
+  - name: 设备管理
+    description: 采集设备档案新增、分页、详情、修改、启停和逻辑删除接口，仅允许 ADMIN 访问
 
 paths:
   /api/v1/auth/register:
@@ -1574,6 +1576,373 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/devices:
+    post:
+      tags:
+        - 设备管理
+      summary: 新增设备
+      description: 创建设备档案，设备编号全局唯一；新设备默认停用，version 为 0。仅 ADMIN 可访问。
+      operationId: createDevice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeviceDTO'
+            example:
+              deviceNo: CAMERA-2026-001
+              deviceName: 1号采集摄像头
+              deviceType: CAMERA
+              remark: 一期设备
+      responses:
+        '200':
+          description: 新增成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDeviceSuccessResult'
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 设备编号已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+    get:
+      tags:
+        - 设备管理
+      summary: 分页查询设备
+      description: 支持按编号或名称关键字、设备类型和启停状态筛选。仅 ADMIN 可访问。
+      operationId: listDevices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: keyword
+          in: query
+          description: 匹配设备编号或设备名称
+          schema:
+            type: string
+            maxLength: 64
+        - name: deviceType
+          in: query
+          schema:
+            $ref: '#/components/schemas/DeviceType'
+        - name: status
+          in: query
+          description: 管理状态：0 停用，1 启用；不表示设备实时在线状态
+          schema:
+            type: integer
+            enum: [0, 1]
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevicePageSuccessResult'
+        '400':
+          description: 分页或筛选参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - 设备管理
+      summary: 查询设备详情
+      operationId: getDevice
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceDetailSuccessResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+    put:
+      tags:
+        - 设备管理
+      summary: 修改设备资料
+      description: 修改名称和备注并校验 version；设备编号和设备类型创建后不通过该接口修改。仅 ADMIN 可访问。
+      operationId: updateDevice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDeviceDTO'
+      responses:
+        '200':
+          description: 修改成功，返回递增后的版本号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceVersionSuccessResult'
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+    delete:
+      tags:
+        - 设备管理
+      summary: 逻辑删除设备
+      description: 只有停用设备可以删除，并校验 version。设备表具绑定完成后将继续增加绑定关系检查。仅 ADMIN 可访问。
+      operationId: deleteDevice
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+        '400':
+          description: 设备未停用或版本参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/devices/{deviceId}/enable:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    put:
+      tags:
+        - 设备管理
+      summary: 启用设备
+      description: 将停用设备改为启用并校验 version；重复启用返回 400。仅 ADMIN 可访问。
+      operationId: enableDevice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceVersionDTO'
+      responses:
+        '200':
+          description: 启用成功，返回递增后的版本号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceVersionSuccessResult'
+        '400':
+          description: 设备已经启用或请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/devices/{deviceId}/disable:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    put:
+      tags:
+        - 设备管理
+      summary: 停用设备
+      description: 将启用设备改为停用并校验 version；重复停用返回 400。仅 ADMIN 可访问。
+      operationId: disableDevice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceVersionDTO'
+      responses:
+        '200':
+          description: 停用成功，返回递增后的版本号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceVersionSuccessResult'
+        '400':
+          description: 设备已经停用或请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
   /api/v1/admin/resident-meters:
     post:
       tags:
@@ -1906,6 +2275,17 @@ components:
       schema:
         type: integer
         format: int64
+      example: 1
+
+    DeviceIdPath:
+      name: deviceId
+      in: path
+      required: true
+      description: 目标设备 ID
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
       example: 1
 
     ResidentIdPath:
@@ -2360,6 +2740,258 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/MeterVersionVO'
+        traceId:
+          type: string
+
+    DeviceType:
+      type: string
+      enum:
+        - CAMERA
+        - GATEWAY
+        - EDGE_DEVICE
+      description: 采集设备类型：摄像头、网关、边缘设备
+
+    CreateDeviceDTO:
+      type: object
+      required:
+        - deviceNo
+        - deviceName
+        - deviceType
+      properties:
+        deviceNo:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 全局唯一的设备编号；服务端去除首尾空格，创建后不可通过资料接口修改
+          example: CAMERA-2026-001
+        deviceName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: 1号采集摄像头
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    UpdateDeviceDTO:
+      type: object
+      required:
+        - deviceName
+        - version
+      properties:
+        deviceName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 修改后的设备名称
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 备注；null 或纯空白会清空备注
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端最近一次查询到的乐观锁版本
+
+    DeviceVersionDTO:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端最近一次查询到的乐观锁版本
+          example: 0
+
+    CreateDeviceVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+          example: 1
+        deviceNo:
+          type: string
+          example: CAMERA-2026-001
+
+    DeviceListItemVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+        - deviceName
+        - deviceType
+        - status
+        - version
+        - updatedAt
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        deviceNo:
+          type: string
+        deviceName:
+          type: string
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        status:
+          type: integer
+          enum: [0, 1]
+          description: 管理状态：0 停用，1 启用；不表示设备实时在线状态
+        version:
+          type: integer
+          description: 当前乐观锁版本
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeviceDetailVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+        - deviceName
+        - deviceType
+        - status
+        - version
+        - createdBy
+        - updatedBy
+        - createdAt
+        - updatedAt
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        deviceNo:
+          type: string
+        deviceName:
+          type: string
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        status:
+          type: integer
+          enum: [0, 1]
+          description: 管理状态：0 停用，1 启用；设备在线状态将在心跳模块中维护
+        version:
+          type: integer
+        remark:
+          type: string
+          nullable: true
+        createdBy:
+          type: integer
+          format: int64
+          description: 创建该设备的管理员 ID
+        updatedBy:
+          type: integer
+          format: int64
+          description: 最后修改该设备的管理员 ID
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeviceVersionVO:
+      type: object
+      required:
+        - deviceId
+        - version
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          description: 操作成功后的最新乐观锁版本
+
+    DevicePageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceListItemVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    CreateDeviceSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/CreateDeviceVO'
+        traceId:
+          type: string
+
+    DevicePageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DevicePageVO'
+        traceId:
+          type: string
+
+    DeviceDetailSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceDetailVO'
+        traceId:
+          type: string
+
+    DeviceVersionSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceVersionVO'
         traceId:
           type: string
 
