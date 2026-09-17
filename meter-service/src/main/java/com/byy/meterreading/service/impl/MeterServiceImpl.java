@@ -18,6 +18,7 @@ import com.byy.meterreading.model.enums.MeterDisplayType;
 import com.byy.meterreading.model.enums.MeterStatus;
 import com.byy.meterreading.model.enums.MeterType;
 import com.byy.meterreading.service.MeterService;
+import com.byy.meterreading.service.ResidentMeterService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meter.CreateMeterVO;
 import com.byy.meterreading.vo.meter.MeterDetailVO;
@@ -42,9 +43,14 @@ public class MeterServiceImpl implements MeterService {
     );
 
     private final MeterMapper meterMapper;
+    private final ResidentMeterService residentMeterService;
 
-    public MeterServiceImpl(MeterMapper meterMapper) {
+    public MeterServiceImpl(
+            MeterMapper meterMapper,
+            ResidentMeterService residentMeterService
+    ) {
         this.meterMapper = meterMapper;
+        this.residentMeterService = residentMeterService;
     }
 
     /**
@@ -293,6 +299,11 @@ public class MeterServiceImpl implements MeterService {
         if (MeterStatus.fromCode(currentMeter.getStatus())
                 != MeterStatus.DISABLED) {
             throw new IllegalArgumentException("只有停用状态的表具可以删除");
+        }
+        if (residentMeterService.hasBindingsByMeterId(meterId)) {
+            throw new ResourceConflictException(
+                    "表具仍绑定居民，不能删除"
+            );
         }
 
         LambdaUpdateWrapper<Meter> updateWrapper =

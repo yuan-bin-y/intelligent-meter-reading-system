@@ -17,6 +17,7 @@ import com.byy.meterreading.mapper.projection.UserRoleCodeRow;
 import com.byy.meterreading.model.SysRole;
 import com.byy.meterreading.model.SysUser;
 import com.byy.meterreading.service.SysUserService;
+import com.byy.meterreading.service.ResidentMeterService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.user.AdminUserVO;
 import com.byy.meterreading.vo.user.AssignableRoleVO;
@@ -42,17 +43,20 @@ public class AdminUserServiceImpl implements AdminUserService {
     private final RedisAuthSessionService redisAuthSessionService;
     private final RedisAuthProtectionService redisAuthProtectionService;
     private final PasswordEncoder passwordEncoder;
+    private final ResidentMeterService residentMeterService;
 
     public AdminUserServiceImpl(
             SysUserService sysUserService,
             RedisAuthSessionService redisAuthSessionService,
             RedisAuthProtectionService redisAuthProtectionService,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            ResidentMeterService residentMeterService
     ) {
         this.sysUserService = sysUserService;
         this.redisAuthSessionService = redisAuthSessionService;
         this.redisAuthProtectionService = redisAuthProtectionService;
         this.passwordEncoder = passwordEncoder;
+        this.residentMeterService = residentMeterService;
     }
 
     /**
@@ -249,6 +253,15 @@ public class AdminUserServiceImpl implements AdminUserService {
         // 4. 新旧角色相同时不修改数据库，也不清除登录会话
         List<String> currentRoleCodes =
                 sysUserService.findRoleCodesByUserId(targetUserId);
+        if (currentRoleCodes.contains("RESIDENT")
+                && !requestedRoleCodes.contains("RESIDENT")
+                && residentMeterService.hasBindingsByResidentId(
+                        targetUserId
+                )) {
+            throw new ResourceConflictException(
+                    "用户仍绑定表具，不能移除RESIDENT角色"
+            );
+        }
         if (Set.copyOf(currentRoleCodes)
                 .equals(Set.copyOf(requestedRoleCodes))) {
             return toAdminUserVO(user, currentRoleCodes);

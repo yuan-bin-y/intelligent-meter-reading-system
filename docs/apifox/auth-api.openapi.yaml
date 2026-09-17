@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理和表具管理模块的 Apifox 测试文档，包含认证、Redis 会话、管理员用户管理以及完整的表具档案管理接口。
-  version: 1.9.0
+  description: 当前认证、用户管理、表具管理和居民表具绑定模块的 Apifox 测试文档。
+  version: 2.0.0
 
 servers:
   - url: http://localhost:8070
@@ -15,6 +15,8 @@ tags:
     description: 仅拥有 ADMIN 角色的用户可以访问的后台用户管理接口
   - name: 表具管理
     description: 表具档案新增、分页、详情、修改、状态流转和逻辑删除接口，仅允许 ADMIN 访问
+  - name: 居民表具绑定
+    description: 管理员维护居民与表具关系，以及居民查询本人名下表具的接口
 
 paths:
   /api/v1/auth/register:
@@ -1572,6 +1574,312 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/resident-meters:
+    post:
+      tags:
+        - 居民表具绑定
+      summary: 为居民绑定表具
+      description: 仅允许把正常状态的表具绑定给启用且拥有 RESIDENT 角色的用户；联合主键和业务预查询共同防止重复绑定。仅 ADMIN 可访问。
+      operationId: bindResidentMeter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BindResidentMeterDTO'
+            example:
+              residentId: 3
+              meterId: 1
+      responses:
+        '200':
+          description: 绑定成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidentMeterBindingSuccessResult'
+        '400':
+          description: 参数错误、用户不是居民、居民被禁用或表具不是正常状态
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 居民用户或表具不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 居民已经绑定该表具
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+              example:
+                code: RESOURCE_CONFLICT
+                message: 居民已经绑定该表具
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
+    get:
+      tags:
+        - 居民表具绑定
+      summary: 分页查询全部绑定关系
+      description: 使用 resident_meter、sys_user、meter 三表 JOIN，支持按居民、表具和关键字筛选。仅 ADMIN 可访问。
+      operationId: listResidentMeterBindings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: keyword
+          in: query
+          description: 匹配用户名、居民显示名称、表具编号或表具名称
+          schema:
+            type: string
+            maxLength: 64
+        - name: residentId
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: meterId
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidentMeterBindingPageSuccessResult'
+        '400':
+          description: 分页或筛选参数错误
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/resident-meters/{residentId}/{meterId}:
+    delete:
+      tags:
+        - 居民表具绑定
+      summary: 解除居民表具绑定
+      description: 删除指定中间表关系。抄表任务模块建立后，会继续增加未完成任务检查。仅 ADMIN 可访问。
+      operationId: unbindResidentMeter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResidentIdPath'
+        - $ref: '#/components/parameters/MeterIdPath'
+      responses:
+        '200':
+          description: 解绑成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+        '400':
+          description: 路径参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 绑定关系不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/residents/{residentId}/meters:
+    get:
+      tags:
+        - 居民表具绑定
+      summary: 查询指定居民的表具
+      description: 使用 resident_meter 和 meter 两表 JOIN 分页查询。仅 ADMIN 可访问。
+      operationId: listResidentMeters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResidentIdPath'
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - $ref: '#/components/parameters/BindingKeyword'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidentBoundMeterPageSuccessResult'
+        '400':
+          description: 指定用户不是居民或查询参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 居民用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meters/{meterId}/residents:
+    get:
+      tags:
+        - 居民表具绑定
+      summary: 查询指定表具的居民
+      description: 使用 resident_meter 和 sys_user 两表 JOIN 分页查询。仅 ADMIN 可访问。
+      operationId: listMeterResidents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MeterIdPath'
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - $ref: '#/components/parameters/BindingKeyword'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterBoundResidentPageSuccessResult'
+        '400':
+          description: 查询参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 表具不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/resident/meters:
+    get:
+      tags:
+        - 居民表具绑定
+      summary: 当前居民查询本人表具
+      description: 居民 ID 从已验证的 JWT userId 中获取，前端不能指定其他居民。仅 RESIDENT 可访问。
+      operationId: listCurrentResidentMeters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BindingPage'
+        - $ref: '#/components/parameters/BindingPageSize'
+        - $ref: '#/components/parameters/BindingKeyword'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidentBoundMeterPageSuccessResult'
+        '400':
+          description: 查询参数错误或当前账号不是可用居民
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 RESIDENT 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1599,6 +1907,44 @@ components:
         type: integer
         format: int64
       example: 1
+
+    ResidentIdPath:
+      name: residentId
+      in: path
+      required: true
+      description: 目标居民用户 ID
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 3
+
+    BindingPage:
+      name: page
+      in: query
+      description: 页码，从 1 开始，默认 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    BindingPageSize:
+      name: pageSize
+      in: query
+      description: 每页数量，默认 20，最大 100
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    BindingKeyword:
+      name: keyword
+      in: query
+      description: 表具查询匹配编号或名称；居民查询匹配用户名或显示名称
+      schema:
+        type: string
+        maxLength: 64
 
   schemas:
     CreateMeterDTO:
@@ -2014,6 +2360,296 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/MeterVersionVO'
+        traceId:
+          type: string
+
+    BindResidentMeterDTO:
+      type: object
+      required:
+        - residentId
+        - meterId
+      properties:
+        residentId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 启用且拥有 RESIDENT 角色的用户 ID
+          example: 3
+        meterId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 正常状态且未删除的表具 ID
+          example: 1
+
+    ResidentMeterBindingVO:
+      type: object
+      required:
+        - residentId
+        - username
+        - displayName
+        - residentStatus
+        - meterId
+        - meterNo
+        - meterName
+        - meterType
+        - displayType
+        - unit
+        - meterStatus
+        - createdBy
+        - boundAt
+      properties:
+        residentId:
+          type: integer
+          format: int64
+        username:
+          type: string
+        displayName:
+          type: string
+        residentStatus:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: 居民账号状态，0 禁用，1 启用
+        meterId:
+          type: integer
+          format: int64
+        meterNo:
+          type: string
+        meterName:
+          type: string
+        meterType:
+          $ref: '#/components/schemas/MeterType'
+        displayType:
+          $ref: '#/components/schemas/MeterDisplayType'
+        unit:
+          type: string
+        meterStatus:
+          type: integer
+          enum:
+            - 0
+            - 1
+            - 2
+            - 3
+          description: 表具状态，0 停用，1 正常，2 维护中，3 已报废
+        createdBy:
+          type: integer
+          format: int64
+          description: 创建绑定关系的管理员 ID
+        boundAt:
+          type: string
+          format: date-time
+
+    ResidentBoundMeterVO:
+      type: object
+      required:
+        - meterId
+        - meterNo
+        - meterName
+        - meterType
+        - displayType
+        - unit
+        - status
+        - version
+        - boundAt
+      properties:
+        meterId:
+          type: integer
+          format: int64
+        meterNo:
+          type: string
+        meterName:
+          type: string
+        meterType:
+          $ref: '#/components/schemas/MeterType'
+        displayType:
+          $ref: '#/components/schemas/MeterDisplayType'
+        unit:
+          type: string
+        status:
+          type: integer
+          enum:
+            - 0
+            - 1
+            - 2
+            - 3
+        version:
+          type: integer
+          description: 当前表具乐观锁版本
+        boundAt:
+          type: string
+          format: date-time
+
+    MeterBoundResidentVO:
+      type: object
+      required:
+        - residentId
+        - username
+        - displayName
+        - status
+        - boundAt
+      properties:
+        residentId:
+          type: integer
+          format: int64
+        username:
+          type: string
+        displayName:
+          type: string
+        status:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: 居民账号状态，0 禁用，1 启用
+        boundAt:
+          type: string
+          format: date-time
+
+    ResidentMeterBindingPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResidentMeterBindingVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    ResidentBoundMeterPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResidentBoundMeterVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    MeterBoundResidentPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeterBoundResidentVO'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+
+    ResidentMeterBindingSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/ResidentMeterBindingVO'
+        traceId:
+          type: string
+
+    ResidentMeterBindingPageSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/ResidentMeterBindingPageVO'
+        traceId:
+          type: string
+
+    ResidentBoundMeterPageSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/ResidentBoundMeterPageVO'
+        traceId:
+          type: string
+
+    MeterBoundResidentPageSuccessResult:
+      type: object
+      required:
+        - code
+        - message
+        - data
+        - traceId
+      properties:
+        code:
+          type: string
+          enum:
+            - OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterBoundResidentPageVO'
         traceId:
           type: string
 
