@@ -25,4 +25,11 @@ public interface DeviceHeartbeatService {
      * @return 心跳 Key 存在时返回 true，否则返回 false
      */
     boolean isOnline(Long deviceId);
+
+    /**
+     * 主动删除设备心跳，供重置密钥、停用和删除设备时调用。
+     *
+     * @param deviceId 设备数据库主键
+     */
+    void clearHeartbeat(Long deviceId);
 }

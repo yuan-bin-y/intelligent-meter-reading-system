@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理和设备表具绑定模块的 Apifox 测试文档。
-  version: 2.3.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定和设备心跳模块的 Apifox 测试文档。
+  version: 2.4.0
 
 servers:
   - url: http://localhost:8070
@@ -19,6 +19,8 @@ tags:
     description: 管理员维护居民与表具关系，以及居民查询本人名下表具的接口
   - name: 设备管理
     description: 采集设备档案新增、分页、详情、修改、启停和逻辑删除接口，仅允许 ADMIN 访问
+  - name: 设备接入
+    description: 设备使用编号和密钥完成身份认证并上报心跳的接口
   - name: 设备表具绑定
     description: 管理员维护采集设备与表具的多对多绑定关系
 
@@ -1578,6 +1580,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/device/heartbeat:
+    post:
+      tags:
+        - 设备接入
+      summary: 上报设备心跳
+      description: 已启用设备通过 X-Device-No 和 X-Device-Secret 请求头完成认证。认证成功后在 Redis 中写入或刷新心跳，默认 TTL 为 90 秒；超过 TTL 未再次上报时，设备自动判定为离线。请求不需要 Body。
+      operationId: heartbeat
+      security:
+        - deviceNoHeader: []
+          deviceSecretHeader: []
+      responses:
+        '200':
+          description: 心跳接收成功，Redis 在线状态和 TTL 已刷新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptySuccessResult'
+              example:
+                code: OK
+                message: success
+                data: null
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 缺少设备认证请求头、设备不存在或设备密钥错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 设备已经停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          description: Redis 暂时不可用或服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
   /api/v1/admin/devices:
     post:
       tags:
@@ -1786,7 +1829,7 @@ paths:
       tags:
         - 设备管理
       summary: 逻辑删除设备
-      description: 只有停用且没有表具绑定关系的设备可以删除，并校验 version。仅 ADMIN 可访问。
+      description: 只有停用且没有表具绑定关系的设备可以删除，并校验 version；删除成功后同步清除 Redis 心跳。仅 ADMIN 可访问。
       operationId: deleteDevice
       security:
         - bearerAuth: []
@@ -1835,6 +1878,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/devices/{deviceId}/runtime-status:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - 设备管理
+      summary: 查询设备实时在线状态
+      description: 先确认设备档案存在，再检查 Redis 心跳 Key。Key 在默认 90 秒 TTL 内存在时 online 为 true，过期或被主动清理后为 false。仅 ADMIN 可访问。
+      operationId: getDeviceRuntimeStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRuntimeStatusSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  deviceId: 1
+                  deviceNo: CAMERA-2026-001
+                  online: true
+                traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          description: Redis 暂时不可用或服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
   /api/v1/admin/devices/{deviceId}/secret/reset:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -1842,7 +1936,7 @@ paths:
       tags:
         - 设备管理
       summary: 重置设备密钥
-      description: 生成新的设备密钥并递增凭证版本和设备档案版本。明文密钥只在本次响应中返回，旧密钥立即失效。仅 ADMIN 可访问。
+      description: 生成新的设备密钥并递增凭证版本和设备档案版本。明文密钥只在本次响应中返回，旧密钥和旧心跳立即失效；设备使用新密钥再次上报心跳后才恢复在线。仅 ADMIN 可访问。
       operationId: resetDeviceSecret
       security:
         - bearerAuth: []
@@ -1954,7 +2048,7 @@ paths:
       tags:
         - 设备管理
       summary: 停用设备
-      description: 将启用设备改为停用并校验 version；重复停用返回 400。仅 ADMIN 可访问。
+      description: 将启用设备改为停用并校验 version；停用成功后立即清除 Redis 心跳，重复停用返回 400。仅 ADMIN 可访问。
       operationId: disableDevice
       security:
         - bearerAuth: []
@@ -2573,6 +2667,16 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    deviceNoHeader:
+      type: apiKey
+      in: header
+      name: X-Device-No
+      description: 管理员创建设备时指定的全局唯一设备编号
+    deviceSecretHeader:
+      type: apiKey
+      in: header
+      name: X-Device-Secret
+      description: 创建设备或重置密钥时仅返回一次的设备明文密钥
 
   parameters:
     UserIdPath:
@@ -3243,6 +3347,27 @@ components:
           type: string
           format: date-time
 
+    DeviceRuntimeStatusVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+        - online
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+          description: 设备数据库主键
+          example: 1
+        deviceNo:
+          type: string
+          description: 设备编号
+          example: CAMERA-2026-001
+        online:
+          type: boolean
+          description: Redis 心跳 Key 当前是否存在
+          example: true
+
     DeviceVersionVO:
       type: object
       required:
@@ -3360,6 +3485,21 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/DeviceDetailVO'
+        traceId:
+          type: string
+
+    DeviceRuntimeStatusSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceRuntimeStatusVO'
         traceId:
           type: string
 

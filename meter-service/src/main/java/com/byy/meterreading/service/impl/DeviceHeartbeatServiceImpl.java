@@ -70,6 +70,15 @@ public class DeviceHeartbeatServiceImpl implements DeviceHeartbeatService {
         return Boolean.TRUE.equals(exists);
     }
 
+    @Override
+    public void clearHeartbeat(Long deviceId) {
+        if (deviceId == null) {
+            throw new IllegalArgumentException("deviceId 不能为空");
+        }
+
+        redisTemplate.delete(heartbeatKey(deviceId));
+    }
+
     private void requireArguments(
             Long deviceId,
             String deviceNo,

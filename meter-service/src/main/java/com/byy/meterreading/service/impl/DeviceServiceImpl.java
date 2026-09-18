@@ -151,8 +151,8 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 原子更新密钥摘要及两个版本号；明文密钥只通过本次响应返回。
-     * 心跳模块完成后，在这里继续清理该设备的 Redis 运行状态。
+     * 原子更新密钥摘要及两个版本号，清理旧凭证产生的心跳；
+     * 明文密钥只通过本次响应返回。
      */
     @Override
     public ResetDeviceSecretVO resetDeviceSecret(
@@ -184,6 +184,9 @@ public class DeviceServiceImpl implements DeviceService {
                         .eq(Device::getVersion, resetDTO.version());
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+
+        // 旧心跳由旧密钥认证产生，重置密钥后必须立即失效。
+        deviceHeartbeatService.clearHeartbeat(deviceId);
 
         return new ResetDeviceSecretVO(
                 deviceId,
@@ -253,12 +256,15 @@ public class DeviceServiceImpl implements DeviceService {
             Long deviceId,
             DeviceVersionDTO versionDTO
     ) {
-        return updateStatus(
+        DeviceVersionVO result = updateStatus(
                 operatorId,
                 deviceId,
                 versionDTO.version(),
                 DeviceStatus.DISABLED
         );
+        // 设备停用后不能继续保持在线状态。
+        deviceHeartbeatService.clearHeartbeat(deviceId);
+        return result;
     }
 
     /**
@@ -295,6 +301,9 @@ public class DeviceServiceImpl implements DeviceService {
                         .eq(Device::getVersion, version);
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+
+        // 删除设备后同步清理 Redis 中残留的运行状态。
+        deviceHeartbeatService.clearHeartbeat(deviceId);
     }
 
     private DeviceVersionVO updateStatus(
