@@ -3,12 +3,14 @@ package com.byy.meterreading.service;
 import com.byy.meterreading.dto.device.CreateDeviceDTO;
 import com.byy.meterreading.dto.device.DevicePageQueryDTO;
 import com.byy.meterreading.dto.device.DeviceVersionDTO;
+import com.byy.meterreading.dto.device.ResetDeviceSecretDTO;
 import com.byy.meterreading.dto.device.UpdateDeviceDTO;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
+import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 
 /**
  * 采集设备档案管理业务。
@@ -24,6 +26,12 @@ public interface DeviceService {
     );
 
     DeviceDetailVO getDevice(Long deviceId);
+
+    ResetDeviceSecretVO resetDeviceSecret(
+            Long operatorId,
+            Long deviceId,
+            ResetDeviceSecretDTO resetDTO
+    );
 
     PageVO<DeviceListItemVO> listDevices(DevicePageQueryDTO queryDTO);
 

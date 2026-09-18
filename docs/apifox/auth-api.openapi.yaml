@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
   description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理和设备表具绑定模块的 Apifox 测试文档。
-  version: 2.2.0
+  version: 2.3.0
 
 servers:
   - url: http://localhost:8070
@@ -1835,6 +1835,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/devices/{deviceId}/secret/reset:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - 设备管理
+      summary: 重置设备密钥
+      description: 生成新的设备密钥并递增凭证版本和设备档案版本。明文密钥只在本次响应中返回，旧密钥立即失效。仅 ADMIN 可访问。
+      operationId: resetDeviceSecret
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetDeviceSecretDTO'
+            example:
+              version: 0
+      responses:
+        '200':
+          description: 重置成功，返回一次新的明文设备密钥
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetDeviceSecretSuccessResult'
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备不存在或已经逻辑删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
   /api/v1/admin/devices/{deviceId}/enable:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -3074,6 +3131,8 @@ components:
       required:
         - deviceId
         - deviceNo
+        - deviceSecret
+        - credentialVersion
       properties:
         deviceId:
           type: integer
@@ -3082,6 +3141,15 @@ components:
         deviceNo:
           type: string
           example: CAMERA-2026-001
+        deviceSecret:
+          type: string
+          description: 系统生成的设备明文密钥，仅在创建成功的本次响应中返回一次
+          example: C0mpletelyRandomDeviceSecretExample123456
+        credentialVersion:
+          type: integer
+          minimum: 1
+          description: 当前设备凭证版本，新建设备固定为1
+          example: 1
 
     DeviceListItemVO:
       type: object
@@ -3123,6 +3191,8 @@ components:
         - deviceType
         - status
         - version
+        - credentialConfigured
+        - credentialVersion
         - createdBy
         - updatedBy
         - createdAt
@@ -3143,6 +3213,18 @@ components:
           description: 管理状态：0 停用，1 启用；设备在线状态将在心跳模块中维护
         version:
           type: integer
+        credentialConfigured:
+          type: boolean
+          description: 是否已经配置设备密钥
+        credentialVersion:
+          type: integer
+          minimum: 0
+          description: 当前设备凭证版本，0表示尚未配置密钥
+        secretRotatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 初次生成或最近一次重置设备密钥的时间
         remark:
           type: string
           nullable: true
@@ -3173,6 +3255,46 @@ components:
         version:
           type: integer
           description: 操作成功后的最新乐观锁版本
+
+    ResetDeviceSecretDTO:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端最近一次查询到的设备档案版本
+
+    ResetDeviceSecretVO:
+      type: object
+      required:
+        - deviceId
+        - deviceNo
+        - deviceSecret
+        - credentialVersion
+        - version
+        - rotatedAt
+      properties:
+        deviceId:
+          type: integer
+          format: int64
+        deviceNo:
+          type: string
+        deviceSecret:
+          type: string
+          description: 新生成的设备明文密钥，仅在本次响应中返回一次
+        credentialVersion:
+          type: integer
+          minimum: 1
+          description: 重置后的凭证版本
+        version:
+          type: integer
+          minimum: 1
+          description: 重置后的设备档案乐观锁版本
+        rotatedAt:
+          type: string
+          format: date-time
+          description: 本次密钥重置时间
 
     DevicePageVO:
       type: object
@@ -3253,6 +3375,21 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/DeviceVersionVO'
+        traceId:
+          type: string
+
+    ResetDeviceSecretSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/ResetDeviceSecretVO'
         traceId:
           type: string
 

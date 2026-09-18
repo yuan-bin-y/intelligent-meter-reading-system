@@ -4,6 +4,7 @@ import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.device.CreateDeviceDTO;
 import com.byy.meterreading.dto.device.DevicePageQueryDTO;
 import com.byy.meterreading.dto.device.DeviceVersionDTO;
+import com.byy.meterreading.dto.device.ResetDeviceSecretDTO;
 import com.byy.meterreading.dto.device.UpdateDeviceDTO;
 import com.byy.meterreading.service.DeviceService;
 import com.byy.meterreading.vo.common.PageVO;
@@ -11,6 +12,7 @@ import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
+import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -70,6 +72,20 @@ public class AdminDeviceController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceDetailVO> getDevice(@PathVariable Long deviceId) {
         return Result.success(deviceService.getDevice(deviceId));
+    }
+
+    @PostMapping("/{deviceId}/secret/reset")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<ResetDeviceSecretVO> resetDeviceSecret(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long deviceId,
+            @Valid @RequestBody ResetDeviceSecretDTO resetDTO
+    ) {
+        return Result.success(deviceService.resetDeviceSecret(
+                extractUserId(jwt),
+                deviceId,
+                resetDTO
+        ));
     }
 
     @GetMapping

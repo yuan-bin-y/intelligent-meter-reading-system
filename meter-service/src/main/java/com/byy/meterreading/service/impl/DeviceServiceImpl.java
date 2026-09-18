@@ -11,11 +11,13 @@ import com.byy.meterreading.common.exception.VersionConflictException;
 import com.byy.meterreading.dto.device.CreateDeviceDTO;
 import com.byy.meterreading.dto.device.DevicePageQueryDTO;
 import com.byy.meterreading.dto.device.DeviceVersionDTO;
+import com.byy.meterreading.dto.device.ResetDeviceSecretDTO;
 import com.byy.meterreading.dto.device.UpdateDeviceDTO;
 import com.byy.meterreading.mapper.DeviceMapper;
 import com.byy.meterreading.model.Device;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.model.enums.DeviceType;
+import com.byy.meterreading.service.DeviceCredentialService;
 import com.byy.meterreading.service.DeviceService;
 import com.byy.meterreading.service.DeviceMeterService;
 import com.byy.meterreading.vo.common.PageVO;
@@ -23,8 +25,11 @@ import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
+import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 
 /**
  * 采集设备档案管理业务实现。
@@ -32,15 +37,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class DeviceServiceImpl implements DeviceService {
 
+    private static final int INITIAL_CREDENTIAL_VERSION = 1;
+
     private final DeviceMapper deviceMapper;
     private final DeviceMeterService deviceMeterService;
+    private final DeviceCredentialService deviceCredentialService;
 
     public DeviceServiceImpl(
             DeviceMapper deviceMapper,
-            DeviceMeterService deviceMeterService
+            DeviceMeterService deviceMeterService,
+            DeviceCredentialService deviceCredentialService
     ) {
         this.deviceMapper = deviceMapper;
         this.deviceMeterService = deviceMeterService;
+        this.deviceCredentialService = deviceCredentialService;
     }
 
     /**
@@ -60,12 +70,19 @@ public class DeviceServiceImpl implements DeviceService {
             throw new ResourceConflictException("设备编号已存在");
         }
 
+        DeviceCredentialService.GeneratedCredential credential =
+                deviceCredentialService.generate();
+        LocalDateTime credentialGeneratedAt = LocalDateTime.now();
+
         Device device = Device.builder()
                 .deviceNo(deviceNo)
                 .deviceName(deviceName)
                 .deviceType(createDTO.deviceType().name())
                 .status(DeviceStatus.DISABLED.getCode())
                 .version(0)
+                .secretHash(credential.secretHash())
+                .credentialVersion(INITIAL_CREDENTIAL_VERSION)
+                .secretRotatedAt(credentialGeneratedAt)
                 .remark(remark)
                 .createdBy(operatorId)
                 .updatedBy(operatorId)
@@ -76,10 +93,15 @@ public class DeviceServiceImpl implements DeviceService {
         } catch (DuplicateKeyException exception) {
             throw new ResourceConflictException(
                     "设备编号已存在",
-                    exception
+                exception
             );
         }
-        return new CreateDeviceVO(device.getId(), device.getDeviceNo());
+        return new CreateDeviceVO(
+                device.getId(),
+                device.getDeviceNo(),
+                credential.rawSecret(),
+                device.getCredentialVersion()
+        );
     }
 
     @Override
@@ -111,6 +133,51 @@ public class DeviceServiceImpl implements DeviceService {
     @Override
     public DeviceDetailVO getDevice(Long deviceId) {
         return toDetailVO(requireDevice(deviceId));
+    }
+
+    /**
+     * 原子更新密钥摘要及两个版本号；明文密钥只通过本次响应返回。
+     * 心跳模块完成后，在这里继续清理该设备的 Redis 运行状态。
+     */
+    @Override
+    public ResetDeviceSecretVO resetDeviceSecret(
+            Long operatorId,
+            Long deviceId,
+            ResetDeviceSecretDTO resetDTO
+    ) {
+        requireOperatorId(operatorId);
+        Device currentDevice = requireDevice(deviceId);
+        requireExpectedVersion(currentDevice, resetDTO.version());
+
+        DeviceCredentialService.GeneratedCredential credential =
+                deviceCredentialService.generate();
+        int currentCredentialVersion = currentDevice.getCredentialVersion() == null
+                ? 0
+                : currentDevice.getCredentialVersion();
+        int nextCredentialVersion = currentCredentialVersion + 1;
+        LocalDateTime rotatedAt = LocalDateTime.now();
+
+        LambdaUpdateWrapper<Device> updateWrapper =
+                Wrappers.<Device>lambdaUpdate()
+                        .set(Device::getSecretHash, credential.secretHash())
+                        .set(Device::getCredentialVersion,
+                                nextCredentialVersion)
+                        .set(Device::getSecretRotatedAt, rotatedAt)
+                        .set(Device::getUpdatedBy, operatorId)
+                        .setSql("version = version + 1")
+                        .eq(Device::getId, deviceId)
+                        .eq(Device::getVersion, resetDTO.version());
+        int updatedRows = deviceMapper.update(null, updateWrapper);
+        ensureUpdated(updatedRows, deviceId);
+
+        return new ResetDeviceSecretVO(
+                deviceId,
+                currentDevice.getDeviceNo(),
+                credential.rawSecret(),
+                nextCredentialVersion,
+                resetDTO.version() + 1,
+                rotatedAt
+        );
     }
 
     @Override
@@ -313,6 +380,10 @@ public class DeviceServiceImpl implements DeviceService {
                 DeviceType.valueOf(device.getDeviceType()),
                 device.getStatus(),
                 device.getVersion(),
+                device.getSecretHash() != null
+                        && !device.getSecretHash().isBlank(),
+                device.getCredentialVersion(),
+                device.getSecretRotatedAt(),
                 device.getRemark(),
                 device.getCreatedBy(),
                 device.getUpdatedBy(),

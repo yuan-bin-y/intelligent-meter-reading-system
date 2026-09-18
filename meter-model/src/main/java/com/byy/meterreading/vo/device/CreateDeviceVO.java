@@ -5,6 +5,8 @@ package com.byy.meterreading.vo.device;
  */
 public record CreateDeviceVO(
         Long deviceId,
-        String deviceNo
+        String deviceNo,
+        String deviceSecret,
+        Integer credentialVersion
 ) {
 }
