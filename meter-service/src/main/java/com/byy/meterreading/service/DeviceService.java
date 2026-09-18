@@ -9,6 +9,7 @@ import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
+import com.byy.meterreading.vo.device.DeviceRuntimeStatusVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
 import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 
@@ -26,6 +27,8 @@ public interface DeviceService {
     );
 
     DeviceDetailVO getDevice(Long deviceId);
+
+    DeviceRuntimeStatusVO getRuntimeStatus(Long deviceId);
 
     ResetDeviceSecretVO resetDeviceSecret(
             Long operatorId,

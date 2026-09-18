@@ -18,12 +18,14 @@ import com.byy.meterreading.model.Device;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.model.enums.DeviceType;
 import com.byy.meterreading.service.DeviceCredentialService;
-import com.byy.meterreading.service.DeviceService;
+import com.byy.meterreading.service.DeviceHeartbeatService;
 import com.byy.meterreading.service.DeviceMeterService;
+import com.byy.meterreading.service.DeviceService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
+import com.byy.meterreading.vo.device.DeviceRuntimeStatusVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
 import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 import org.springframework.dao.DuplicateKeyException;
@@ -42,15 +44,18 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceMapper deviceMapper;
     private final DeviceMeterService deviceMeterService;
     private final DeviceCredentialService deviceCredentialService;
+    private final DeviceHeartbeatService deviceHeartbeatService;
 
     public DeviceServiceImpl(
             DeviceMapper deviceMapper,
             DeviceMeterService deviceMeterService,
-            DeviceCredentialService deviceCredentialService
+            DeviceCredentialService deviceCredentialService,
+            DeviceHeartbeatService deviceHeartbeatService
     ) {
         this.deviceMapper = deviceMapper;
         this.deviceMeterService = deviceMeterService;
         this.deviceCredentialService = deviceCredentialService;
+        this.deviceHeartbeatService = deviceHeartbeatService;
     }
 
     /**
@@ -133,6 +138,16 @@ public class DeviceServiceImpl implements DeviceService {
     @Override
     public DeviceDetailVO getDevice(Long deviceId) {
         return toDetailVO(requireDevice(deviceId));
+    }
+
+    @Override
+    public DeviceRuntimeStatusVO getRuntimeStatus(Long deviceId) {
+        Device device = requireDevice(deviceId);
+        return new DeviceRuntimeStatusVO(
+                device.getId(),
+                device.getDeviceNo(),
+                deviceHeartbeatService.isOnline(device.getId())
+        );
     }
 
     /**

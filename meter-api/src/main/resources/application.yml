@@ -5,6 +5,9 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:local}
 
 app:
+  device:
+    heartbeat:
+      ttl: ${DEVICE_HEARTBEAT_TTL:PT90S}
   security:
     jwt:
       issuer: ${JWT_ISSUER:meter-reading-system}

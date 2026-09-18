@@ -11,6 +11,7 @@ import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.device.CreateDeviceVO;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.device.DeviceListItemVO;
+import com.byy.meterreading.vo.device.DeviceRuntimeStatusVO;
 import com.byy.meterreading.vo.device.DeviceVersionVO;
 import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 import jakarta.validation.Valid;
@@ -72,6 +73,17 @@ public class AdminDeviceController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceDetailVO> getDevice(@PathVariable Long deviceId) {
         return Result.success(deviceService.getDevice(deviceId));
+    }
+
+    /**
+     * 查询设备当前是否存在有效心跳。
+     */
+    @GetMapping("/{deviceId}/runtime-status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<DeviceRuntimeStatusVO> getRuntimeStatus(
+            @PathVariable Long deviceId
+    ) {
+        return Result.success(deviceService.getRuntimeStatus(deviceId));
     }
 
     @PostMapping("/{deviceId}/secret/reset")

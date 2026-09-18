@@ -1,5 +1,7 @@
 package com.byy.meterreading.auth.config;
 
+import com.byy.meterreading.auth.device.DeviceAuthenticationFilter;
+import com.byy.meterreading.auth.device.DeviceAuthenticationProvider;
 import com.byy.meterreading.auth.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -53,14 +56,19 @@ public class SecurityConfig {
     }
 
     /**
-     * 创建认证管理器，并注册数据库用户名密码认证器。
-     * AuthServiceImpl 会调用该对象的 authenticate 方法执行登录认证。
+     * 创建统一认证管理器，同时注册用户密码认证器和设备密钥认证器。
+     * 用户登录和设备接口过滤器都会调用该对象的 authenticate 方法，
+     * 认证管理器会按照认证 Token 类型选择对应的 Provider。
      */
     @Bean
     public AuthenticationManager authenticationManager(
-            DaoAuthenticationProvider daoAuthenticationProvider
+            DaoAuthenticationProvider daoAuthenticationProvider,
+            DeviceAuthenticationProvider deviceAuthenticationProvider
     ) {
-        return new ProviderManager(daoAuthenticationProvider);
+        return new ProviderManager(
+                daoAuthenticationProvider,
+                deviceAuthenticationProvider
+        );
     }
 
     /**
@@ -89,6 +97,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             DaoAuthenticationProvider daoAuthenticationProvider,
+            DeviceAuthenticationProvider deviceAuthenticationProvider,
+            DeviceAuthenticationFilter deviceAuthenticationFilter,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             AuthenticationEntryPoint authenticationEntryPoint,
             AccessDeniedHandler accessDeniedHandler
@@ -104,7 +114,10 @@ public class SecurityConfig {
                 // 注册用户名密码认证器，供登录流程使用
                 .authenticationProvider(daoAuthenticationProvider)
 
-                // 登录和注册接口允许匿名访问，其他接口必须完成认证
+                // 注册设备密钥认证器，供设备接口认证过滤器使用
+                .authenticationProvider(deviceAuthenticationProvider)
+
+                // 登录、注册和刷新接口允许匿名访问；设备接口只允许认证设备访问
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 POST,
@@ -112,7 +125,15 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/refresh"
                         ).permitAll()
+                        .requestMatchers("/api/v1/device/**")
+                        .hasRole("DEVICE")
                         .anyRequest().authenticated())
+
+                // 设备使用请求头密钥认证，应当在 Bearer JWT 过滤器之前完成
+                .addFilterBefore(
+                        deviceAuthenticationFilter,
+                        BearerTokenAuthenticationFilter.class
+                )
 
                 // 将未认证和无权限异常转换为项目统一响应结构
                 .exceptionHandling(exception -> exception
