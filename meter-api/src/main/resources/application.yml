@@ -8,6 +8,7 @@ app:
   device:
     heartbeat:
       ttl: ${DEVICE_HEARTBEAT_TTL:PT90S}
+    offline-detection-interval: ${DEVICE_OFFLINE_DETECTION_INTERVAL:30000}
   security:
     jwt:
       issuer: ${JWT_ISSUER:meter-reading-system}
