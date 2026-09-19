@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定和设备心跳模块的 Apifox 测试文档。
-  version: 2.4.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定、设备心跳和设备告警模块的 Apifox 测试文档。
+  version: 2.5.0
 
 servers:
   - url: http://localhost:8070
@@ -23,6 +23,8 @@ tags:
     description: 设备使用编号和密钥完成身份认证并上报心跳的接口
   - name: 设备表具绑定
     description: 管理员维护采集设备与表具的多对多绑定关系
+  - name: 设备告警
+    description: 管理员分页查询设备离线告警及其恢复情况
 
 paths:
   /api/v1/auth/register:
@@ -2661,6 +2663,182 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/device-alarms:
+    get:
+      tags:
+        - 设备告警
+      summary: 分页查询设备告警
+      description: 使用 device_alarm 和 device 两表关联查询。支持按设备编号、设备名称、告警类型、告警状态和发生时间范围筛选，仅允许 ADMIN 访问。
+      operationId: listDeviceAlarms
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码，从 1 开始，默认 1
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: 每页数量，默认 20，最大 100
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: deviceNo
+          in: query
+          description: 按设备编号模糊匹配
+          schema:
+            type: string
+            maxLength: 64
+          example: CAMERA-2026
+        - name: deviceName
+          in: query
+          description: 按设备名称模糊匹配
+          schema:
+            type: string
+            maxLength: 64
+          example: 1号采集摄像头
+        - name: alarmType
+          in: query
+          description: 告警类型，当前仅支持设备离线
+          schema:
+            $ref: '#/components/schemas/DeviceAlarmType'
+        - name: alarmStatus
+          in: query
+          description: 告警状态
+          schema:
+            $ref: '#/components/schemas/DeviceAlarmStatus'
+        - name: occurredAtStart
+          in: query
+          description: 告警发生时间范围的开始时间，使用 ISO-8601 格式
+          schema:
+            type: string
+            format: date-time
+          example: '2026-09-19T00:00:00'
+        - name: occurredAtEnd
+          in: query
+          description: 告警发生时间范围的结束时间，不能早于开始时间
+          schema:
+            type: string
+            format: date-time
+          example: '2026-09-19T23:59:59'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAlarmPageSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  records:
+                    - id: 12
+                      deviceId: 5
+                      deviceNo: CAMERA-2026-001
+                      deviceName: 1号采集摄像头
+                      alarmType: OFFLINE
+                      alarmTypeName: 设备离线
+                      alarmStatus: OPEN
+                      alarmStatusName: 未恢复
+                      occurredAt: '2026-09-19T10:34:56'
+                      recoveredAt: null
+                  total: 1
+                  page: 1
+                  pageSize: 20
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 分页参数、枚举值或时间范围错误
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/device-alarms/{alarmId}:
+    get:
+      tags:
+        - 设备告警
+      summary: 查询设备告警详情
+      description: 根据告警 ID 查询告警记录及其关联设备信息，仅允许 ADMIN 访问。
+      operationId: getDeviceAlarm
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: alarmId
+          in: path
+          required: true
+          description: 设备告警 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 12
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAlarmSuccessResult'
+              example:
+                code: OK
+                message: success
+                data:
+                  id: 12
+                  deviceId: 5
+                  deviceNo: CAMERA-2026-001
+                  deviceName: 1号采集摄像头
+                  alarmType: OFFLINE
+                  alarmTypeName: 设备离线
+                  alarmStatus: RECOVERED
+                  alarmStatusName: 已恢复
+                  occurredAt: '2026-09-19T10:34:56'
+                  recoveredAt: '2026-09-19T10:36:10'
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 告警 ID 不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 设备告警不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3367,6 +3545,137 @@ components:
           type: boolean
           description: Redis 心跳 Key 当前是否存在
           example: true
+
+    DeviceAlarmType:
+      type: string
+      enum:
+        - OFFLINE
+      description: 设备告警类型，当前仅支持 OFFLINE（设备离线）
+      example: OFFLINE
+
+    DeviceAlarmStatus:
+      type: string
+      enum:
+        - OPEN
+        - RECOVERED
+      description: 告警状态，OPEN 表示未恢复，RECOVERED 表示已经恢复
+      example: OPEN
+
+    DeviceAlarmVO:
+      type: object
+      required:
+        - id
+        - deviceId
+        - deviceNo
+        - deviceName
+        - alarmType
+        - alarmTypeName
+        - alarmStatus
+        - alarmStatusName
+        - occurredAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 设备告警 ID
+          example: 12
+        deviceId:
+          type: integer
+          format: int64
+          description: 关联设备 ID
+          example: 5
+        deviceNo:
+          type: string
+          description: 设备编号
+          example: CAMERA-2026-001
+        deviceName:
+          type: string
+          description: 设备名称
+          example: 1号采集摄像头
+        alarmType:
+          $ref: '#/components/schemas/DeviceAlarmType'
+        alarmTypeName:
+          type: string
+          description: 告警类型中文名称
+          example: 设备离线
+        alarmStatus:
+          $ref: '#/components/schemas/DeviceAlarmStatus'
+        alarmStatusName:
+          type: string
+          description: 告警状态中文名称
+          example: 未恢复
+        occurredAt:
+          type: string
+          format: date-time
+          description: 检测到设备离线的时间
+          example: '2026-09-19T10:34:56'
+        recoveredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 设备恢复心跳的时间；告警未恢复时为 null
+          example: '2026-09-19T10:36:10'
+
+    DeviceAlarmPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          description: 当前页设备告警记录
+          items:
+            $ref: '#/components/schemas/DeviceAlarmVO'
+        total:
+          type: integer
+          format: int64
+          description: 符合条件的告警总数
+          example: 1
+        page:
+          type: integer
+          format: int64
+          description: 当前页码
+          example: 1
+        pageSize:
+          type: integer
+          format: int64
+          description: 每页数量
+          example: 20
+
+    DeviceAlarmSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceAlarmVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    DeviceAlarmPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/DeviceAlarmPageVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
 
     DeviceVersionVO:
       type: object

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.DeviceAlarmMapper">
+
+    <!-- 告警列表需要关联设备表，以便同时返回设备编号和设备名称。 -->
+    <select id="selectAlarmPage"
+            resultType="com.byy.meterreading.mapper.projection.DeviceAlarmRow">
+        SELECT da.id,
+               da.device_id,
+               d.device_no,
+               d.device_name,
+               da.alarm_type,
+               da.alarm_status,
+               da.occurred_at,
+               da.recovered_at
+        FROM device_alarm AS da
+        INNER JOIN device AS d ON d.id = da.device_id
+        WHERE 1 = 1
+        <if test="deviceNo != null">
+            AND d.device_no LIKE CONCAT('%', #{deviceNo}, '%')
+        </if>
+        <if test="deviceName != null">
+            AND d.device_name LIKE CONCAT('%', #{deviceName}, '%')
+        </if>
+        <if test="alarmType != null">
+            AND da.alarm_type = #{alarmType}
+        </if>
+        <if test="alarmStatus != null">
+            AND da.alarm_status = #{alarmStatus}
+        </if>
+        <if test="occurredAtStart != null">
+            AND da.occurred_at &gt;= #{occurredAtStart}
+        </if>
+        <if test="occurredAtEnd != null">
+            AND da.occurred_at &lt;= #{occurredAtEnd}
+        </if>
+        ORDER BY da.occurred_at DESC, da.id DESC
+    </select>
+
+    <!-- 告警详情与列表复用相同的两表组合结构。 -->
+    <select id="selectAlarmById"
+            resultType="com.byy.meterreading.mapper.projection.DeviceAlarmRow">
+        SELECT da.id,
+               da.device_id,
+               d.device_no,
+               d.device_name,
+               da.alarm_type,
+               da.alarm_status,
+               da.occurred_at,
+               da.recovered_at
+        FROM device_alarm AS da
+        INNER JOIN device AS d ON d.id = da.device_id
+        WHERE da.id = #{alarmId}
+        LIMIT 1
+    </select>
+
+</mapper>

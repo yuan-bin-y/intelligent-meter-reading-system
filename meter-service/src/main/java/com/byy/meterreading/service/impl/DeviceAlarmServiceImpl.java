@@ -1,8 +1,13 @@
 package com.byy.meterreading.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.common.exception.ResourceNotFoundException;
+import com.byy.meterreading.dto.devicealarm.DeviceAlarmPageQueryDTO;
 import com.byy.meterreading.mapper.DeviceAlarmMapper;
 import com.byy.meterreading.mapper.DeviceMapper;
+import com.byy.meterreading.mapper.projection.DeviceAlarmRow;
 import com.byy.meterreading.model.Device;
 import com.byy.meterreading.model.DeviceAlarm;
 import com.byy.meterreading.model.enums.DeviceAlarmStatus;
@@ -10,8 +15,11 @@ import com.byy.meterreading.model.enums.DeviceAlarmType;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.service.DeviceAlarmService;
 import com.byy.meterreading.service.DeviceHeartbeatService;
+import com.byy.meterreading.vo.common.PageVO;
+import com.byy.meterreading.vo.devicealarm.DeviceAlarmVO;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -44,6 +52,54 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
         this.deviceMapper = deviceMapper;
         this.deviceAlarmMapper = deviceAlarmMapper;
         this.deviceHeartbeatService = deviceHeartbeatService;
+    }
+
+    /**
+     * 使用数据库分页完成告警条件查询，并将数据库字符串转换为稳定的枚举响应。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public PageVO<DeviceAlarmVO> listAlarms(
+            DeviceAlarmPageQueryDTO queryDTO
+    ) {
+        validateOccurredAtRange(queryDTO);
+
+        Page<DeviceAlarmRow> page = new Page<>(
+                queryDTO.page(),
+                queryDTO.pageSize()
+        );
+        IPage<DeviceAlarmRow> result = deviceAlarmMapper.selectAlarmPage(
+                page,
+                queryDTO.deviceNo(),
+                queryDTO.deviceName(),
+                enumName(queryDTO.alarmType()),
+                enumName(queryDTO.alarmStatus()),
+                queryDTO.occurredAtStart(),
+                queryDTO.occurredAtEnd()
+        );
+
+        return new PageVO<>(
+                result.getRecords().stream()
+                        .map(this::toAlarmVO)
+                        .toList(),
+                result.getTotal(),
+                result.getCurrent(),
+                result.getSize()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DeviceAlarmVO getAlarm(Long alarmId) {
+        if (alarmId == null || alarmId <= 0) {
+            throw new IllegalArgumentException("告警ID必须大于0");
+        }
+
+        DeviceAlarmRow row = deviceAlarmMapper.selectAlarmById(alarmId);
+        if (row == null) {
+            throw new ResourceNotFoundException("设备告警不存在");
+        }
+        return toAlarmVO(row);
     }
 
     /**
@@ -150,6 +206,50 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
                         .eq(DeviceAlarm::getId, alarmId)
                         .eq(DeviceAlarm::getAlarmStatus,
                                 DeviceAlarmStatus.OPEN.name())
+        );
+    }
+
+    /**
+     * 结束时间早于开始时间时直接返回参数错误，避免执行无意义查询。
+     */
+    private void validateOccurredAtRange(
+            DeviceAlarmPageQueryDTO queryDTO
+    ) {
+        if (queryDTO.occurredAtStart() != null
+                && queryDTO.occurredAtEnd() != null
+                && queryDTO.occurredAtEnd()
+                .isBefore(queryDTO.occurredAtStart())) {
+            throw new IllegalArgumentException(
+                    "告警结束时间不能早于开始时间"
+            );
+        }
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    /**
+     * 将两表关联查询结果转换成 API 响应，并补充枚举中文名称。
+     */
+    private DeviceAlarmVO toAlarmVO(DeviceAlarmRow row) {
+        DeviceAlarmType alarmType = DeviceAlarmType.valueOf(
+                row.getAlarmType()
+        );
+        DeviceAlarmStatus alarmStatus = DeviceAlarmStatus.valueOf(
+                row.getAlarmStatus()
+        );
+        return new DeviceAlarmVO(
+                row.getId(),
+                row.getDeviceId(),
+                row.getDeviceNo(),
+                row.getDeviceName(),
+                alarmType,
+                alarmType.getDescription(),
+                alarmStatus,
+                alarmStatus.getDescription(),
+                row.getOccurredAt(),
+                row.getRecoveredAt()
         );
     }
 }
