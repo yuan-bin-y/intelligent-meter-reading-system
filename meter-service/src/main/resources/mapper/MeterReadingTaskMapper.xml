@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.MeterReadingTaskMapper">
+
+    <!--
+        执行者可能来自用户表或设备表，因此使用 LEFT JOIN，再根据
+        executor_type 将两种执行者统一成 executor_id 和 executor_name。
+    -->
+    <select id="selectTaskPage"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingTaskListRow">
+        SELECT task.id AS task_id,
+               task.task_no,
+               meter.id AS meter_id,
+               meter.meter_no,
+               meter.meter_name,
+               task.executor_type,
+               CASE task.executor_type
+                   WHEN 'METER_READER' THEN task.meter_reader_id
+                   WHEN 'DEVICE' THEN task.device_id
+               END AS executor_id,
+               CASE task.executor_type
+                   WHEN 'METER_READER' THEN reader.display_name
+                   WHEN 'DEVICE' THEN device.device_name
+               END AS executor_name,
+               task.task_status,
+               task.scheduled_at,
+               task.retry_count,
+               task.version,
+               task.updated_at
+        FROM meter_reading_task AS task
+        INNER JOIN meter
+                ON meter.id = task.meter_id
+        LEFT JOIN sys_user AS reader
+               ON reader.id = task.meter_reader_id
+              AND task.executor_type = 'METER_READER'
+        LEFT JOIN device
+               ON device.id = task.device_id
+              AND task.executor_type = 'DEVICE'
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                task.task_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="executorType != null">
+            AND task.executor_type = #{executorType}
+        </if>
+        <if test="taskStatus != null">
+            AND task.task_status = #{taskStatus}
+        </if>
+        <if test="meterReaderId != null">
+            AND task.meter_reader_id = #{meterReaderId}
+        </if>
+        <if test="deviceId != null">
+            AND task.device_id = #{deviceId}
+        </if>
+        <if test="scheduledAtStart != null">
+            AND task.scheduled_at &gt;= #{scheduledAtStart}
+        </if>
+        <if test="scheduledAtEnd != null">
+            AND task.scheduled_at &lt;= #{scheduledAtEnd}
+        </if>
+        ORDER BY task.scheduled_at DESC, task.id DESC
+    </select>
+
+    <!-- 任务详情包含表具信息、统一后的执行者信息和完整生命周期字段。 -->
+    <select id="selectTaskDetail"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingTaskDetailRow">
+        SELECT task.id AS task_id,
+               task.task_no,
+               meter.id AS meter_id,
+               meter.meter_no,
+               meter.meter_name,
+               meter.meter_type,
+               meter.display_type,
+               meter.unit,
+               task.executor_type,
+               CASE task.executor_type
+                   WHEN 'METER_READER' THEN task.meter_reader_id
+                   WHEN 'DEVICE' THEN task.device_id
+               END AS executor_id,
+               CASE task.executor_type
+                   WHEN 'METER_READER' THEN reader.username
+                   WHEN 'DEVICE' THEN device.device_no
+               END AS executor_code,
+               CASE task.executor_type
+                   WHEN 'METER_READER' THEN reader.display_name
+                   WHEN 'DEVICE' THEN device.device_name
+               END AS executor_name,
+               task.task_status,
+               task.scheduled_at,
+               task.started_at,
+               task.submitted_at,
+               task.completed_at,
+               task.cancelled_at,
+               task.failed_reason,
+               task.cancel_reason,
+               task.retry_count,
+               task.version,
+               task.remark,
+               task.created_by,
+               task.updated_by,
+               task.created_at,
+               task.updated_at
+        FROM meter_reading_task AS task
+        INNER JOIN meter
+                ON meter.id = task.meter_id
+        LEFT JOIN sys_user AS reader
+               ON reader.id = task.meter_reader_id
+              AND task.executor_type = 'METER_READER'
+        LEFT JOIN device
+               ON device.id = task.device_id
+              AND task.executor_type = 'DEVICE'
+        WHERE task.id = #{taskId}
+        LIMIT 1
+    </select>
+
+</mapper>
