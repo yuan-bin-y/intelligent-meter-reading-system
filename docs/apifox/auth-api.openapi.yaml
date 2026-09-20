@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定、设备心跳和设备告警模块的 Apifox 测试文档。
-  version: 2.5.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定、设备心跳、设备告警以及人工和设备抄表任务模块的 Apifox 测试文档。
+  version: 2.7.0
 
 servers:
   - url: http://localhost:8070
@@ -25,6 +25,12 @@ tags:
     description: 管理员维护采集设备与表具的多对多绑定关系
   - name: 设备告警
     description: 管理员分页查询设备离线告警及其恢复情况
+  - name: 抄表任务管理
+    description: 管理员创建、查询、重新分配、取消和重试抄表任务
+  - name: 抄表员任务
+    description: 抄表员查询、开始并提交分配给本人的人工抄表任务
+  - name: 设备抄表任务
+    description: 认证设备拉取、接收并提交分配给本设备的自动抄表任务
 
 paths:
   /api/v1/auth/register:
@@ -2839,6 +2845,835 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/admin/meter-reading-tasks:
+    post:
+      tags:
+        - 抄表任务管理
+      summary: 创建抄表任务
+      description: 管理员为抄表员或采集设备创建待执行的抄表任务。
+      operationId: createMeterReadingTask
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeterReadingTaskDTO'
+            example:
+              meterId: 8
+              executorType: METER_READER
+              executorId: 3
+              scheduledAt: '2026-09-21T08:00:00'
+              remark: 本月例行抄表
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskDetailSuccessResult'
+        '400':
+          description: 请求参数、表具状态或执行者类型不正确
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 表具、抄表员或设备不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 任务编号或其他唯一数据冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+    get:
+      tags:
+        - 抄表任务管理
+      summary: 分页查询抄表任务
+      description: 管理员按关键字、执行者、任务状态和计划时间范围分页查询任务。
+      operationId: listMeterReadingTasks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码，从 1 开始
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: keyword
+          in: query
+          description: 按任务编号、表号或表具名称模糊查询
+          schema:
+            type: string
+            maxLength: 64
+        - name: executorType
+          in: query
+          description: 执行者类型
+          schema:
+            $ref: '#/components/schemas/TaskExecutorType'
+        - name: taskStatus
+          in: query
+          description: 任务状态
+          schema:
+            $ref: '#/components/schemas/MeterReadingTaskStatus'
+        - name: meterReaderId
+          in: query
+          description: 抄表员用户 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: deviceId
+          in: query
+          description: 采集设备 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: scheduledAtStart
+          in: query
+          description: 计划执行时间范围起点
+          schema:
+            type: string
+            format: date-time
+        - name: scheduledAtEnd
+          in: query
+          description: 计划执行时间范围终点
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskPageSuccessResult'
+        '400':
+          description: 查询参数不正确
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-reading-tasks/{taskId}:
+    get:
+      tags:
+        - 抄表任务管理
+      summary: 查询抄表任务详情
+      description: 管理员根据任务 ID 查询任务、表具、执行者和执行过程信息。
+      operationId: getMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: 抄表任务 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskDetailSuccessResult'
+        '400':
+          description: 任务 ID 不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 抄表任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-reading-tasks/{taskId}/assignment:
+    put:
+      tags:
+        - 抄表任务管理
+      summary: 重新分配抄表任务
+      description: 管理员在允许重新分配的状态下修改任务执行者，version 用于乐观锁并发控制。
+      operationId: assignMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: 抄表任务 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignMeterReadingTaskDTO'
+            example:
+              executorType: DEVICE
+              executorId: 5
+              version: 0
+      responses:
+        '200':
+          description: 重新分配成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskVersionSuccessResult'
+        '400':
+          description: 参数错误、任务状态不允许重新分配或执行者没有变化
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 抄表任务或新执行者不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期，任务已被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-reading-tasks/{taskId}/cancel:
+    put:
+      tags:
+        - 抄表任务管理
+      summary: 取消抄表任务
+      description: 管理员取消尚未进入终态的任务，并记录取消原因和取消时间。
+      operationId: cancelMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: 抄表任务 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelMeterReadingTaskDTO'
+            example:
+              version: 1
+              reason: 表具已暂停使用
+      responses:
+        '200':
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskVersionSuccessResult'
+        '400':
+          description: 参数错误或当前任务状态不允许取消
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 抄表任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期，任务已被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-reading-tasks/{taskId}/retry:
+    post:
+      tags:
+        - 抄表任务管理
+      summary: 重试失败的抄表任务
+      description: 管理员将 FAILED 任务恢复为 PENDING，增加重试次数并清理上一次失败过程数据。
+      operationId: retryMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: 抄表任务 ID
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterReadingTaskVersionDTO'
+            example:
+              version: 1
+      responses:
+        '200':
+          description: 重试成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskVersionSuccessResult'
+        '400':
+          description: 参数错误或任务状态不是 FAILED
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 抄表任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期，任务已被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-reader/tasks:
+    get:
+      tags:
+        - 抄表员任务
+      summary: 查询我的抄表任务
+      description: 根据 JWT 中的 userId 查询分配给当前抄表员的任务，不能指定或查询其他抄表员。
+      operationId: listMyMeterReadingTasks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: taskStatus
+          in: query
+          description: 可选任务状态筛选
+          schema:
+            $ref: '#/components/schemas/MeterReadingTaskStatus'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskPageSuccessResult'
+        '400':
+          description: 查询参数不正确
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 METER_READER 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-reader/tasks/{taskId}:
+    get:
+      tags:
+        - 抄表员任务
+      summary: 查询我的任务详情
+      description: 仅当任务分配给 JWT 当前用户时返回详情，其他执行者的任务按不存在处理。
+      operationId: getMyMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskDetailSuccessResult'
+        '400':
+          description: 任务 ID 不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 METER_READER 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前抄表员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-reader/tasks/{taskId}/start:
+    put:
+      tags:
+        - 抄表员任务
+      summary: 开始执行人工抄表任务
+      description: 将本人 PENDING 任务推进为 PROCESSING，并记录实际开始时间。
+      operationId: startMyMeterReadingTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterReadingTaskVersionDTO'
+            example:
+              version: 0
+      responses:
+        '200':
+          description: 开始成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskVersionSuccessResult'
+        '400':
+          description: 参数错误或当前状态不能开始
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 METER_READER 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前抄表员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期，任务已被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-reader/tasks/{taskId}/result:
+    post:
+      tags:
+        - 抄表员任务
+      summary: 提交人工抄表结果
+      description: 在同一事务中保存读数和照片，并将本人 PROCESSING 任务推进为 PENDING_REVIEW。
+      operationId: submitManualMeterReadingResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitManualReadingResultDTO'
+            example:
+              version: 1
+              readingValue: 123.45
+              imageUrl: https://files.example.com/readings/manual-1.jpg
+              remark: 现场读数清晰
+      responses:
+        '200':
+          description: 提交成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingSubmissionSuccessResult'
+        '400':
+          description: 参数、读数位数或任务状态不正确
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 未登录或登录会话已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 当前用户没有 METER_READER 角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前抄表员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期、结果已提交或任务被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/device/meter-reading-tasks:
+    get:
+      tags:
+        - 设备抄表任务
+      summary: 查询设备待执行任务
+      description: 使用设备编号和密钥认证，只返回分配给当前设备的 PENDING 任务。
+      operationId: listDevicePendingMeterReadingTasks
+      security:
+        - deviceNoHeader: []
+          deviceSecretHeader: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskPageSuccessResult'
+        '400':
+          description: 分页参数不正确
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResult'
+        '401':
+          description: 设备编号或密钥错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 设备已停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/device/meter-reading-tasks/{taskId}/accept:
+    post:
+      tags:
+        - 设备抄表任务
+      summary: 设备接收抄表任务
+      description: 将分配给当前设备的 PENDING 任务推进为 PROCESSING。
+      operationId: acceptDeviceMeterReadingTask
+      security:
+        - deviceNoHeader: []
+          deviceSecretHeader: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterReadingTaskVersionDTO'
+            example:
+              version: 0
+      responses:
+        '200':
+          description: 接收成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingTaskVersionSuccessResult'
+        '400':
+          description: 参数错误或当前状态不能接收
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 设备编号或密钥错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 设备已停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前设备
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期，任务已被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/device/meter-reading-tasks/{taskId}/result:
+    post:
+      tags:
+        - 设备抄表任务
+      summary: 设备上报识别结果
+      description: 在同一事务中保存图片、识别读数和置信度，并将 PROCESSING 任务推进为 PENDING_REVIEW。
+      operationId: submitDeviceMeterReadingResult
+      security:
+        - deviceNoHeader: []
+          deviceSecretHeader: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitDeviceReadingResultDTO'
+            example:
+              version: 1
+              recognizedReading: 456.78
+              imageUrl: https://files.example.com/readings/device-1.jpg
+              confidence: 0.9876
+              remark: model-v1
+      responses:
+        '200':
+          description: 提交成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingSubmissionSuccessResult'
+        '400':
+          description: 参数、读数位数、置信度或任务状态不正确
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResult'
+                  - $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 设备编号或密钥错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '403':
+          description: 设备已停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前设备
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期、结果已提交或任务被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3673,6 +4508,584 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/DeviceAlarmPageVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    TaskExecutorType:
+      type: string
+      enum:
+        - METER_READER
+        - DEVICE
+      description: 任务执行者类型，METER_READER 表示人工抄表员，DEVICE 表示采集设备
+      example: METER_READER
+
+    MeterReadingTaskStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSING
+        - PENDING_REVIEW
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+      description: 抄表任务状态。主要流转为 PENDING→PROCESSING→PENDING_REVIEW→COMPLETED；执行中可转为 FAILED；FAILED 可重试回 PENDING；允许的非终态可取消为 CANCELLED。
+      example: PENDING
+
+    CreateMeterReadingTaskDTO:
+      type: object
+      required:
+        - meterId
+        - executorType
+        - executorId
+        - scheduledAt
+      properties:
+        meterId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 待抄读表具 ID
+          example: 8
+        executorType:
+          $ref: '#/components/schemas/TaskExecutorType'
+        executorId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 执行者 ID；人工任务传用户 ID，设备任务传设备 ID
+          example: 3
+        scheduledAt:
+          type: string
+          format: date-time
+          description: 计划执行时间
+          example: '2026-09-21T08:00:00'
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 管理员备注
+          example: 本月例行抄表
+
+    MeterReadingTaskPageQueryDTO:
+      type: object
+      description: GET 分页查询对应的查询参数模型
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        keyword:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: 任务编号、表号或表具名称关键字
+        executorType:
+          $ref: '#/components/schemas/TaskExecutorType'
+        taskStatus:
+          $ref: '#/components/schemas/MeterReadingTaskStatus'
+        meterReaderId:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        deviceId:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        scheduledAtStart:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledAtEnd:
+          type: string
+          format: date-time
+          nullable: true
+
+    AssignMeterReadingTaskDTO:
+      type: object
+      required:
+        - executorType
+        - executorId
+        - version
+      properties:
+        executorType:
+          $ref: '#/components/schemas/TaskExecutorType'
+        executorId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 新执行者 ID
+          example: 5
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端当前持有的乐观锁版本
+          example: 0
+
+    CancelMeterReadingTaskDTO:
+      type: object
+      required:
+        - version
+        - reason
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端当前持有的乐观锁版本
+          example: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 取消原因
+          example: 表具已暂停使用
+
+    MeterReadingTaskVersionDTO:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端当前持有的乐观锁版本
+          example: 1
+
+    MeterReadingTaskListItemVO:
+      type: object
+      required:
+        - taskId
+        - taskNo
+        - meterId
+        - meterNo
+        - meterName
+        - executorType
+        - executorTypeName
+        - executorId
+        - executorName
+        - taskStatus
+        - taskStatusName
+        - scheduledAt
+        - retryCount
+        - version
+        - updatedAt
+      properties:
+        taskId:
+          type: integer
+          format: int64
+          example: 1
+        taskNo:
+          type: string
+          description: 全局唯一任务编号
+          example: MRT-52F5328C051A4EAC985C26E9F079F684
+        meterId:
+          type: integer
+          format: int64
+          example: 8
+        meterNo:
+          type: string
+          example: WATER-2026-001
+        meterName:
+          type: string
+          example: 1栋101水表
+        executorType:
+          $ref: '#/components/schemas/TaskExecutorType'
+        executorTypeName:
+          type: string
+          example: 抄表员
+        executorId:
+          type: integer
+          format: int64
+          example: 3
+        executorName:
+          type: string
+          example: 张三
+        taskStatus:
+          $ref: '#/components/schemas/MeterReadingTaskStatus'
+        taskStatusName:
+          type: string
+          example: 待执行
+        scheduledAt:
+          type: string
+          format: date-time
+          example: '2026-09-21T08:00:00'
+        retryCount:
+          type: integer
+          minimum: 0
+          example: 0
+        version:
+          type: integer
+          minimum: 0
+          example: 0
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-09-20T10:00:00'
+
+    MeterReadingTaskDetailVO:
+      type: object
+      required:
+        - taskId
+        - taskNo
+        - meterId
+        - meterNo
+        - meterName
+        - meterType
+        - displayType
+        - unit
+        - executorType
+        - executorTypeName
+        - executorId
+        - executorCode
+        - executorName
+        - taskStatus
+        - taskStatusName
+        - scheduledAt
+        - retryCount
+        - version
+        - createdBy
+        - updatedBy
+        - createdAt
+        - updatedAt
+      properties:
+        taskId:
+          type: integer
+          format: int64
+          example: 1
+        taskNo:
+          type: string
+          example: MRT-52F5328C051A4EAC985C26E9F079F684
+        meterId:
+          type: integer
+          format: int64
+          example: 8
+        meterNo:
+          type: string
+          example: WATER-2026-001
+        meterName:
+          type: string
+          example: 1栋101水表
+        meterType:
+          $ref: '#/components/schemas/MeterType'
+        displayType:
+          $ref: '#/components/schemas/MeterDisplayType'
+        unit:
+          type: string
+          example: m3
+        executorType:
+          $ref: '#/components/schemas/TaskExecutorType'
+        executorTypeName:
+          type: string
+          example: 抄表员
+        executorId:
+          type: integer
+          format: int64
+          example: 3
+        executorCode:
+          type: string
+          description: 人工任务为用户名，设备任务为设备编号
+          example: reader01
+        executorName:
+          type: string
+          description: 人工任务为用户显示名称，设备任务为设备名称
+          example: 张三
+        taskStatus:
+          $ref: '#/components/schemas/MeterReadingTaskStatus'
+        taskStatusName:
+          type: string
+          example: 待执行
+        scheduledAt:
+          type: string
+          format: date-time
+          example: '2026-09-21T08:00:00'
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 实际开始时间
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 结果提交时间
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 审核完成时间
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 取消时间
+        failedReason:
+          type: string
+          nullable: true
+          description: 最近一次执行失败原因
+        cancelReason:
+          type: string
+          nullable: true
+          description: 管理员取消原因
+        retryCount:
+          type: integer
+          minimum: 0
+          example: 0
+        version:
+          type: integer
+          minimum: 0
+          example: 0
+        remark:
+          type: string
+          nullable: true
+          example: 本月例行抄表
+        createdBy:
+          type: integer
+          format: int64
+          description: 创建任务的管理员用户 ID
+          example: 2
+        updatedBy:
+          type: integer
+          format: int64
+          description: 最后修改任务的用户 ID
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-20T10:00:00'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-09-20T10:00:00'
+
+    MeterReadingTaskVersionVO:
+      type: object
+      required:
+        - taskId
+        - taskStatus
+        - version
+      properties:
+        taskId:
+          type: integer
+          format: int64
+          example: 1
+        taskStatus:
+          $ref: '#/components/schemas/MeterReadingTaskStatus'
+        version:
+          type: integer
+          minimum: 0
+          description: 操作成功后的最新乐观锁版本
+          example: 2
+
+    MeterReadingTaskPageVO:
+      type: object
+      required:
+        - records
+        - total
+        - page
+        - pageSize
+      properties:
+        records:
+          type: array
+          description: 当前页抄表任务
+          items:
+            $ref: '#/components/schemas/MeterReadingTaskListItemVO'
+        total:
+          type: integer
+          format: int64
+          example: 1
+        page:
+          type: integer
+          format: int64
+          example: 1
+        pageSize:
+          type: integer
+          format: int64
+          example: 20
+
+    MeterReadingTaskDetailSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterReadingTaskDetailVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    MeterReadingTaskPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterReadingTaskPageVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    MeterReadingTaskVersionSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterReadingTaskVersionVO'
+        traceId:
+          type: string
+          description: 本次请求的追踪标识
+
+    SubmitManualReadingResultDTO:
+      type: object
+      required:
+        - version
+        - readingValue
+        - imageUrl
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端当前持有的任务乐观锁版本
+          example: 1
+        readingValue:
+          type: number
+          format: double
+          minimum: 0
+          description: 人工读取的表具读数，还必须符合对应表具的整数位和小数位配置
+          example: 123.45
+        imageUrl:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: 现场抄表照片地址
+          example: https://files.example.com/readings/manual-1.jpg
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 抄表员备注
+          example: 现场读数清晰
+
+    SubmitDeviceReadingResultDTO:
+      type: object
+      required:
+        - version
+        - recognizedReading
+        - imageUrl
+        - confidence
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 客户端当前持有的任务乐观锁版本
+          example: 1
+        recognizedReading:
+          type: number
+          format: double
+          minimum: 0
+          description: 视觉识别得到的表具读数，还必须符合对应表具的整数位和小数位配置
+          example: 456.78
+        imageUrl:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: 设备采集图片地址
+          example: https://files.example.com/readings/device-1.jpg
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: 视觉识别置信度，最多保留 4 位小数
+          example: 0.9876
+        remark:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 模型版本等设备附加信息
+          example: model-v1
+
+    MeterReadingReviewStatus:
+      type: string
+      enum:
+        - PENDING
+        - APPROVED
+        - REJECTED
+      description: 抄表结果审核状态；当前任务执行接口只会创建 PENDING 结果
+      example: PENDING
+
+    MeterReadingSubmissionVO:
+      type: object
+      required:
+        - resultId
+        - taskId
+        - readingValue
+        - reviewStatus
+        - taskStatus
+        - taskVersion
+        - submittedAt
+      properties:
+        resultId:
+          type: integer
+          format: int64
+          description: 新增的抄表结果 ID
+          example: 12
+        taskId:
+          type: integer
+          format: int64
+          example: 20
+        readingValue:
+          type: number
+          format: double
+          example: 123.45
+        reviewStatus:
+          $ref: '#/components/schemas/MeterReadingReviewStatus'
+        taskStatus:
+          $ref: '#/components/schemas/MeterReadingTaskStatus'
+        taskVersion:
+          type: integer
+          minimum: 0
+          description: 提交成功后的最新任务版本
+          example: 2
+        submittedAt:
+          type: string
+          format: date-time
+          description: 服务端记录的结果提交时间
+          example: '2026-09-20T15:30:00'
+
+    MeterReadingSubmissionSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/MeterReadingSubmissionVO'
         traceId:
           type: string
           description: 本次请求的追踪标识
