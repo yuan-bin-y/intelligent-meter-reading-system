@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.MeterImageMapper">
+
+    <sql id="imageDetailColumns">
+        image.id AS image_id,
+        image.task_id,
+        task.task_no,
+        task.task_status,
+        meter.id AS meter_id,
+        meter.meter_no,
+        meter.meter_name,
+        image.uploader_type,
+        image.uploader_id,
+        CASE image.uploader_type
+            WHEN 'METER_READER' THEN reader.username
+            WHEN 'DEVICE' THEN device.device_no
+        END AS uploader_code,
+        CASE image.uploader_type
+            WHEN 'METER_READER' THEN reader.display_name
+            WHEN 'DEVICE' THEN device.device_name
+        END AS uploader_name,
+        image.upload_request_id,
+        image.image_type,
+        image.original_name,
+        image.bucket_name,
+        image.object_key,
+        image.oss_etag,
+        image.content_type,
+        image.file_size,
+        image.image_width,
+        image.image_height,
+        image.sha256,
+        image.image_status,
+        image.storage_status,
+        image.status_reason,
+        image.status_changed_by,
+        image.status_changed_at,
+        image.deleted,
+        image.deleted_by,
+        image.deleted_at,
+        result_image.result_id,
+        image.version,
+        image.created_at,
+        image.updated_at
+    </sql>
+
+    <sql id="imageDetailJoins">
+        FROM meter_image AS image
+        INNER JOIN meter_reading_task AS task
+                ON task.id = image.task_id
+        INNER JOIN meter
+                ON meter.id = task.meter_id
+        LEFT JOIN sys_user AS reader
+               ON reader.id = image.uploader_id
+              AND image.uploader_type = 'METER_READER'
+        LEFT JOIN device
+               ON device.id = image.uploader_id
+              AND image.uploader_type = 'DEVICE'
+        LEFT JOIN meter_reading_result_image AS result_image
+               ON result_image.image_id = image.id
+    </sql>
+
+    <select id="selectImagePage"
+            resultType="com.byy.meterreading.mapper.projection.MeterImageRow">
+        SELECT <include refid="imageDetailColumns"/>
+        <include refid="imageDetailJoins"/>
+        WHERE 1 = 1
+        <if test="taskNo != null">
+            AND task.task_no LIKE CONCAT('%', #{taskNo}, '%')
+        </if>
+        <if test="meterNo != null">
+            AND meter.meter_no LIKE CONCAT('%', #{meterNo}, '%')
+        </if>
+        <if test="uploaderType != null">
+            AND image.uploader_type = #{uploaderType}
+        </if>
+        <if test="uploaderId != null">
+            AND image.uploader_id = #{uploaderId}
+        </if>
+        <if test="imageStatus != null">
+            AND image.image_status = #{imageStatus}
+        </if>
+        <if test="storageStatus != null">
+            AND image.storage_status = #{storageStatus}
+        </if>
+        <if test="bound != null and bound">
+            AND result_image.result_id IS NOT NULL
+        </if>
+        <if test="bound != null and bound == false">
+            AND result_image.result_id IS NULL
+        </if>
+        <if test="deleted != null">
+            AND image.deleted = #{deleted}
+        </if>
+        <if test="createdAtStart != null">
+            AND image.created_at &gt;= #{createdAtStart}
+        </if>
+        <if test="createdAtEnd != null">
+            AND image.created_at &lt;= #{createdAtEnd}
+        </if>
+        ORDER BY image.created_at DESC, image.id DESC
+    </select>
+
+    <select id="selectImageDetail"
+            resultType="com.byy.meterreading.mapper.projection.MeterImageRow">
+        SELECT <include refid="imageDetailColumns"/>
+        <include refid="imageDetailJoins"/>
+        WHERE image.id = #{imageId}
+        LIMIT 1
+    </select>
+
+    <select id="selectTaskImages"
+            resultType="com.byy.meterreading.mapper.projection.MeterImageRow">
+        SELECT <include refid="imageDetailColumns"/>
+        <include refid="imageDetailJoins"/>
+        WHERE image.task_id = #{taskId}
+        <if test="includeDeleted == false">
+            AND image.deleted = 0
+        </if>
+        ORDER BY image.created_at ASC, image.id ASC
+    </select>
+
+    <select id="selectForSubmission"
+            resultType="com.byy.meterreading.model.MeterImage">
+        SELECT image.*
+        FROM meter_image AS image
+        WHERE image.id IN
+        <foreach collection="imageIds" item="imageId"
+                 open="(" separator="," close=")">
+            #{imageId}
+        </foreach>
+        ORDER BY image.id
+        FOR UPDATE
+    </select>
+
+    <update id="softDeleteReaderImage">
+        UPDATE meter_image AS image
+        INNER JOIN meter_reading_task AS task
+                ON task.id = image.task_id
+        SET image.deleted = 1,
+            image.deleted_by = #{readerId},
+            image.deleted_at = #{deletedAt},
+            image.storage_status = 'DELETE_PENDING',
+            image.version = image.version + 1
+        WHERE image.id = #{imageId}
+          AND image.task_id = #{taskId}
+          AND image.uploader_type = 'METER_READER'
+          AND image.uploader_id = #{readerId}
+          AND image.deleted = 0
+          AND image.version = #{version}
+          AND task.task_status = 'PROCESSING'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM meter_reading_result_image AS relation
+              WHERE relation.image_id = image.id
+          )
+    </update>
+
+    <select id="selectCleanupCandidates"
+            resultType="com.byy.meterreading.model.MeterImage">
+        SELECT image.*
+        FROM meter_image AS image
+        INNER JOIN meter_reading_task AS task
+                ON task.id = image.task_id
+        LEFT JOIN meter_reading_result_image AS relation
+               ON relation.image_id = image.id
+        WHERE image.storage_status IN ('STORED', 'DELETE_PENDING')
+          AND (
+              image.storage_status = 'DELETE_PENDING'
+              OR (
+                  image.updated_at &lt;= #{cutoff}
+                  AND (image.deleted = 1 OR image.image_status = 'INVALID')
+              )
+              OR (
+                  image.created_at &lt;= #{cutoff}
+                  AND relation.image_id IS NULL
+                  AND task.task_status IN (
+                      'PENDING_REVIEW', 'COMPLETED', 'FAILED', 'CANCELLED'
+                  )
+              )
+          )
+        ORDER BY image.updated_at ASC, image.id ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

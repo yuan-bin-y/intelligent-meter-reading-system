@@ -35,7 +35,6 @@ public class MeterReadingResult {
     private Long deviceId;
 
     private BigDecimal readingValue;
-    private String imageUrl;
 
     /** 设备识别结果必填，人工提交时为空。 */
     private BigDecimal recognitionConfidence;

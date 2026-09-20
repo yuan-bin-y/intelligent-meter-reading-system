@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定、设备管理、设备表具绑定、设备心跳、设备告警以及人工和设备抄表任务模块的 Apifox 测试文档。
-  version: 2.7.0
+  description: 当前认证、用户管理、表具管理、居民表具绑定、设备、告警、抄表任务及阿里云 OSS 抄表图片模块的 Apifox 测试文档。
+  version: 2.8.0
 
 servers:
   - url: http://localhost:8070
@@ -31,6 +31,8 @@ tags:
     description: 抄表员查询、开始并提交分配给本人的人工抄表任务
   - name: 设备抄表任务
     description: 认证设备拉取、接收并提交分配给本设备的自动抄表任务
+  - name: 抄表图片
+    description: 抄表员和设备上传图片、管理员治理图片以及登录用户获取短时访问地址
 
 paths:
   /api/v1/auth/register:
@@ -3446,7 +3448,7 @@ paths:
             example:
               version: 1
               readingValue: 123.45
-              imageUrl: https://files.example.com/readings/manual-1.jpg
+              imageIds: [101, 102]
               remark: 现场读数清晰
       responses:
         '200':
@@ -3631,7 +3633,7 @@ paths:
             example:
               version: 1
               recognizedReading: 456.78
-              imageUrl: https://files.example.com/readings/device-1.jpg
+              imageIds: [201]
               confidence: 0.9876
               remark: model-v1
       responses:
@@ -3669,6 +3671,349 @@ paths:
                 $ref: '#/components/schemas/ErrorResult'
         '409':
           description: version 已过期、结果已提交或任务被其他请求修改
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-reader/tasks/{taskId}/images:
+    post:
+      tags: [抄表图片]
+      summary: 抄表员上传任务图片
+      description: 仅允许给本人 PROCESSING 任务上传 JPEG、PNG 或 WebP；同一 X-Idempotency-Key 重试返回同一图片。
+      operationId: uploadReaderMeterImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                imageType:
+                  $ref: '#/components/schemas/MeterImageType'
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 上传成功或命中幂等记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageItemSuccessResult'
+        '400':
+          description: 文件为空、格式不支持、文件过大或请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '404':
+          description: 任务不存在或不属于当前抄表员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 任务状态变化、达到图片上限或幂等标识冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '502':
+          description: OSS 未配置或 OSS 操作失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+    get:
+      tags: [抄表图片]
+      summary: 查询本人任务图片
+      operationId: listReaderMeterImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageListSuccessResult'
+
+  /api/v1/meter-reader/tasks/{taskId}/images/{imageId}:
+    delete:
+      tags: [抄表图片]
+      summary: 抄表员删除误传图片
+      description: 仅允许软删除本人 PROCESSING 任务下尚未绑定结果的图片；OSS 删除失败时由定时任务补偿。
+      operationId: deleteReaderMeterImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: '#/components/parameters/ImageIdPath'
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: 删除请求处理成功
+        '404':
+          description: 图片不存在或不属于当前抄表员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 图片已绑定结果、任务状态变化或版本冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/device/meter-reading-tasks/{taskId}/images:
+    post:
+      tags: [抄表图片]
+      summary: 设备上传任务采集图片
+      description: 设备通过 X-Device-No 和 X-Device-Secret 认证，只能给分配到本机的 PROCESSING 任务上传图片。
+      operationId: uploadDeviceMeterImage
+      security:
+        - deviceNoHeader: []
+          deviceSecretHeader: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                imageType:
+                  $ref: '#/components/schemas/MeterImageType'
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 上传成功或命中幂等记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageItemSuccessResult'
+        '401':
+          description: 设备编号或密钥错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: 任务状态变化、达到图片上限或幂等标识冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '502':
+          description: OSS 未配置或 OSS 操作失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-images:
+    get:
+      tags: [抄表图片]
+      summary: 管理员分页查询抄表图片
+      operationId: listAdminMeterImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: taskNo
+          in: query
+          schema: {type: string, maxLength: 64}
+        - name: meterNo
+          in: query
+          schema: {type: string, maxLength: 64}
+        - name: uploaderType
+          in: query
+          schema: {$ref: '#/components/schemas/TaskExecutorType'}
+        - name: uploaderId
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: imageStatus
+          in: query
+          schema: {$ref: '#/components/schemas/MeterImageStatus'}
+        - name: storageStatus
+          in: query
+          schema: {$ref: '#/components/schemas/MeterImageStorageStatus'}
+        - name: bound
+          in: query
+          schema: {type: boolean}
+        - name: deleted
+          in: query
+          schema: {type: boolean}
+        - name: createdAtStart
+          in: query
+          schema: {type: string, format: date-time}
+        - name: createdAtEnd
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImagePageSuccessResult'
+
+  /api/v1/admin/meter-images/{imageId}:
+    get:
+      tags: [抄表图片]
+      summary: 管理员查询图片详情
+      operationId: getAdminMeterImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImageIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageDetailSuccessResult'
+        '404':
+          description: 图片不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-reading-tasks/{taskId}/images:
+    get:
+      tags: [抄表图片]
+      summary: 管理员查询指定任务全部图片
+      operationId: listAdminTaskMeterImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+      responses:
+        '200':
+          description: 查询成功，包含已软删除图片用于审计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageDetailListSuccessResult'
+
+  /api/v1/admin/meter-images/{imageId}/invalidate:
+    put:
+      tags: [抄表图片]
+      summary: 管理员标记图片无效
+      operationId: invalidateMeterImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImageIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeterImageStatusDTO'
+            example: {version: 0, reason: 图片模糊，无法审核}
+      responses:
+        '200':
+          description: 标记成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageVersionSuccessResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/admin/meter-images/{imageId}/restore:
+    put:
+      tags: [抄表图片]
+      summary: 管理员恢复图片
+      operationId: restoreMeterImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImageIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeterImageStatusDTO'
+            example: {version: 1, reason: 复核后确认图片有效}
+      responses:
+        '200':
+          description: 恢复成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageVersionSuccessResult'
+        '400':
+          description: OSS 对象已删除或当前状态不能恢复
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '409':
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+
+  /api/v1/meter-images/{imageId}/access-url:
+    get:
+      tags: [抄表图片]
+      summary: 获取图片临时访问地址
+      description: ADMIN、AUDITOR 可访问全部有效对象；抄表员可访问本人上传图片；居民可访问本人表具已完成任务的图片。
+      operationId: getMeterImageAccessUrl
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImageIdPath'
+      responses:
+        '200':
+          description: 签发短时 OSS URL 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterImageAccessUrlSuccessResult'
+        '404':
+          description: 图片不存在、已失效或当前用户无业务访问权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '502':
+          description: OSS 未配置或签名失败
           content:
             application/json:
               schema:
@@ -3760,6 +4105,37 @@ components:
       schema:
         type: string
         maxLength: 64
+
+    TaskIdPath:
+      name: taskId
+      in: path
+      required: true
+      description: 抄表任务 ID
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    ImageIdPath:
+      name: imageId
+      in: path
+      required: true
+      description: 抄表图片元数据 ID
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    IdempotencyKeyHeader:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      description: 每次新上传生成一个唯一值；同一请求重试时保持不变，最大64个字符
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+      example: 550e8400-e29b-41d4-a716-446655440000
 
   schemas:
     CreateMeterDTO:
@@ -4956,12 +5332,198 @@ components:
           type: string
           description: 本次请求的追踪标识
 
+    MeterImageType:
+      type: string
+      enum: [ORIGINAL, AI_ANNOTATED, ENVIRONMENT]
+      default: ORIGINAL
+      description: ORIGINAL 原始表具图片；AI_ANNOTATED AI 标注图片；ENVIRONMENT 现场环境图片
+
+    MeterImageStatus:
+      type: string
+      enum: [VALID, INVALID]
+      description: 图片业务有效性状态
+
+    MeterImageStorageStatus:
+      type: string
+      enum: [STORED, DELETE_PENDING, DELETED]
+      description: OSS 对象存储生命周期状态
+
+    UpdateMeterImageStatusDTO:
+      type: object
+      required: [version, reason]
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 当前图片乐观锁版本
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 失效或恢复原因
+
+    MeterImageItemVO:
+      type: object
+      required:
+        - imageId
+        - taskId
+        - imageType
+        - originalName
+        - contentType
+        - fileSize
+        - imageStatus
+        - storageStatus
+        - version
+        - createdAt
+      properties:
+        imageId: {type: integer, format: int64}
+        taskId: {type: integer, format: int64}
+        imageType: {$ref: '#/components/schemas/MeterImageType'}
+        imageTypeName: {type: string}
+        originalName: {type: string}
+        contentType: {type: string, enum: [image/jpeg, image/png, image/webp]}
+        fileSize: {type: integer, format: int64, description: 字节数}
+        imageWidth: {type: integer, nullable: true}
+        imageHeight: {type: integer, nullable: true}
+        imageStatus: {$ref: '#/components/schemas/MeterImageStatus'}
+        imageStatusName: {type: string}
+        storageStatus: {$ref: '#/components/schemas/MeterImageStorageStatus'}
+        resultId: {type: integer, format: int64, nullable: true}
+        version: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+
+    MeterImageDetailVO:
+      allOf:
+        - $ref: '#/components/schemas/MeterImageItemVO'
+        - type: object
+          properties:
+            taskNo: {type: string}
+            taskStatus: {type: string}
+            meterId: {type: integer, format: int64}
+            meterNo: {type: string}
+            meterName: {type: string}
+            uploaderType: {$ref: '#/components/schemas/TaskExecutorType'}
+            uploaderTypeName: {type: string}
+            uploaderId: {type: integer, format: int64}
+            uploaderCode: {type: string}
+            uploaderName: {type: string}
+            bucketName: {type: string}
+            objectKey: {type: string}
+            ossEtag: {type: string, nullable: true}
+            sha256: {type: string}
+            storageStatusName: {type: string}
+            statusReason: {type: string, nullable: true}
+            statusChangedBy: {type: integer, format: int64, nullable: true}
+            statusChangedAt: {type: string, format: date-time, nullable: true}
+            deleted: {type: boolean}
+            deletedBy: {type: integer, format: int64, nullable: true}
+            deletedAt: {type: string, format: date-time, nullable: true}
+            updatedAt: {type: string, format: date-time}
+
+    MeterImageVersionVO:
+      type: object
+      required: [imageId, imageStatus, version]
+      properties:
+        imageId: {type: integer, format: int64}
+        imageStatus: {$ref: '#/components/schemas/MeterImageStatus'}
+        version: {type: integer, minimum: 0}
+
+    MeterImageAccessUrlVO:
+      type: object
+      required: [imageId, accessUrl, expiresIn]
+      properties:
+        imageId: {type: integer, format: int64}
+        accessUrl:
+          type: string
+          format: uri
+          description: 私有 OSS 对象的短时签名地址
+        expiresIn:
+          type: integer
+          format: int64
+          description: 地址剩余有效秒数
+
+    MeterImageItemSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterImageItemVO'}
+        traceId: {type: string}
+
+    MeterImageListSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/MeterImageItemVO'}
+        traceId: {type: string}
+
+    MeterImageDetailSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterImageDetailVO'}
+        traceId: {type: string}
+
+    MeterImageDetailListSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/MeterImageDetailVO'}
+        traceId: {type: string}
+
+    MeterImagePageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: object
+          required: [records, total, page, pageSize]
+          properties:
+            records:
+              type: array
+              items: {$ref: '#/components/schemas/MeterImageDetailVO'}
+            total: {type: integer, format: int64}
+            page: {type: integer}
+            pageSize: {type: integer}
+        traceId: {type: string}
+
+    MeterImageVersionSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterImageVersionVO'}
+        traceId: {type: string}
+
+    MeterImageAccessUrlSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterImageAccessUrlVO'}
+        traceId: {type: string}
+
     SubmitManualReadingResultDTO:
       type: object
       required:
         - version
         - readingValue
-        - imageUrl
+        - imageIds
       properties:
         version:
           type: integer
@@ -4974,12 +5536,17 @@ components:
           minimum: 0
           description: 人工读取的表具读数，还必须符合对应表具的整数位和小数位配置
           example: 123.45
-        imageUrl:
-          type: string
-          minLength: 1
-          maxLength: 1024
-          description: 现场抄表照片地址
-          example: https://files.example.com/readings/manual-1.jpg
+        imageIds:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          description: 当前抄表员预先上传且属于本任务的有效图片 ID
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          example: [101, 102]
         remark:
           type: string
           maxLength: 500
@@ -4992,7 +5559,7 @@ components:
       required:
         - version
         - recognizedReading
-        - imageUrl
+        - imageIds
         - confidence
       properties:
         version:
@@ -5006,12 +5573,17 @@ components:
           minimum: 0
           description: 视觉识别得到的表具读数，还必须符合对应表具的整数位和小数位配置
           example: 456.78
-        imageUrl:
-          type: string
-          minLength: 1
-          maxLength: 1024
-          description: 设备采集图片地址
-          example: https://files.example.com/readings/device-1.jpg
+        imageIds:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          description: 当前设备预先上传且属于本任务的有效图片 ID
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          example: [201]
         confidence:
           type: number
           format: double

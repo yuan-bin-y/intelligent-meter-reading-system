@@ -3,8 +3,24 @@ spring:
     name: intelligent-meter-reading-system
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
+  servlet:
+    multipart:
+      max-file-size: ${OSS_MAX_FILE_SIZE:10MB}
+      max-request-size: ${OSS_MAX_REQUEST_SIZE:11MB}
 
 app:
+  storage:
+    oss:
+      enabled: ${OSS_ENABLED:false}
+      endpoint: ${OSS_ENDPOINT:}
+      bucket-name: ${OSS_BUCKET_NAME:}
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+      access-url-ttl: ${OSS_ACCESS_URL_TTL:PT5M}
+      max-file-size: ${OSS_MAX_FILE_SIZE:10MB}
+      max-images-per-task: ${OSS_MAX_IMAGES_PER_TASK:5}
+      cleanup-retention: ${OSS_CLEANUP_RETENTION:P7D}
+      cleanup-interval: ${OSS_CLEANUP_INTERVAL:PT1H}
   device:
     heartbeat:
       ttl: ${DEVICE_HEARTBEAT_TTL:PT90S}

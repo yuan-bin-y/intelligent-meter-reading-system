@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.handler;
 
 import com.byy.meterreading.auth.exception.RateLimitExceededException;
+import com.byy.meterreading.common.exception.ObjectStorageException;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
@@ -18,8 +19,11 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.LinkedHashMap;
@@ -144,6 +148,8 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler({
             MissingServletRequestParameterException.class,
+            MissingRequestHeaderException.class,
+            MissingServletRequestPartException.class,
             MethodArgumentTypeMismatchException.class
     })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -151,6 +157,18 @@ public class GlobalExceptionHandler {
         return Result.failure(
                 ApiErrorCode.BAD_REQUEST,
                 "请求参数不正确"
+        );
+    }
+
+    /** multipart 请求在进入 Controller 前超过上传上限时返回 413。 */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
+    public Result<Void> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException exception
+    ) {
+        return Result.failure(
+                ApiErrorCode.PAYLOAD_TOO_LARGE,
+                ApiErrorCode.PAYLOAD_TOO_LARGE.getMessage()
         );
     }
 
@@ -208,6 +226,20 @@ public class GlobalExceptionHandler {
         return Result.failure(
                 ApiErrorCode.RESOURCE_CONFLICT,
                 ApiErrorCode.RESOURCE_CONFLICT.getMessage()
+        );
+    }
+
+    /** 阿里云 OSS 不可用时返回明确的上游服务错误。 */
+    @ExceptionHandler(ObjectStorageException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public Result<Void> handleObjectStorageException(
+            ObjectStorageException exception
+    ) {
+        String traceId = TraceIdContext.getOrCreate();
+        log.error("OSS 调用失败，traceId={}", traceId, exception);
+        return Result.failure(
+                ApiErrorCode.UPSTREAM_ERROR,
+                exception.getMessage()
         );
     }
 

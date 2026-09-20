@@ -3,12 +3,14 @@ package com.byy.meterreading.dto.meterreadingtask;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 设备提交识别读数、采集图片和模型置信度的请求参数。
@@ -24,9 +26,10 @@ public record SubmitDeviceReadingResultDTO(
                 message = "识别读数最多12位整数和3位小数")
         BigDecimal recognizedReading,
 
-        @NotBlank(message = "采集图片地址不能为空")
-        @Size(max = 1024, message = "采集图片地址长度不能超过1024个字符")
-        String imageUrl,
+        @NotEmpty(message = "至少选择一张采集图片")
+        @Size(max = 5, message = "一次最多提交5张采集图片")
+        List<@NotNull(message = "图片ID不能为空")
+                @Positive(message = "图片ID必须大于0") Long> imageIds,
 
         @NotNull(message = "识别置信度不能为空")
         @DecimalMin(value = "0", message = "识别置信度不能小于0")
@@ -39,7 +42,7 @@ public record SubmitDeviceReadingResultDTO(
         String remark
 ) {
     public SubmitDeviceReadingResultDTO {
-        imageUrl = imageUrl == null ? null : imageUrl.trim();
+        imageIds = imageIds == null ? null : List.copyOf(imageIds);
         remark = trimToNull(remark);
     }
 

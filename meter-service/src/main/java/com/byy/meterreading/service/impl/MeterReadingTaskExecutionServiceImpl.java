@@ -7,18 +7,25 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
+import com.byy.meterreading.config.OssProperties;
 import com.byy.meterreading.dto.meterreadingtask.DevicePendingTaskPageQueryDTO;
 import com.byy.meterreading.dto.meterreadingtask.MyMeterReadingTaskPageQueryDTO;
 import com.byy.meterreading.dto.meterreadingtask.SubmitDeviceReadingResultDTO;
 import com.byy.meterreading.dto.meterreadingtask.SubmitManualReadingResultDTO;
 import com.byy.meterreading.mapper.MeterMapper;
+import com.byy.meterreading.mapper.MeterImageMapper;
 import com.byy.meterreading.mapper.MeterReadingResultMapper;
+import com.byy.meterreading.mapper.MeterReadingResultImageMapper;
 import com.byy.meterreading.mapper.MeterReadingTaskMapper;
 import com.byy.meterreading.mapper.projection.MeterReadingTaskDetailRow;
 import com.byy.meterreading.mapper.projection.MeterReadingTaskListRow;
 import com.byy.meterreading.model.Meter;
+import com.byy.meterreading.model.MeterImage;
 import com.byy.meterreading.model.MeterReadingResult;
+import com.byy.meterreading.model.MeterReadingResultImage;
 import com.byy.meterreading.model.MeterReadingTask;
+import com.byy.meterreading.model.enums.MeterImageStatus;
+import com.byy.meterreading.model.enums.MeterImageStorageStatus;
 import com.byy.meterreading.model.enums.MeterDisplayType;
 import com.byy.meterreading.model.enums.MeterReadingReviewStatus;
 import com.byy.meterreading.model.enums.MeterReadingTaskStatus;
@@ -36,6 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 人工抄表和设备自动抄表的任务执行实现。
@@ -46,16 +59,25 @@ public class MeterReadingTaskExecutionServiceImpl
 
     private final MeterReadingTaskMapper meterReadingTaskMapper;
     private final MeterReadingResultMapper meterReadingResultMapper;
+    private final MeterReadingResultImageMapper resultImageMapper;
+    private final MeterImageMapper meterImageMapper;
     private final MeterMapper meterMapper;
+    private final OssProperties ossProperties;
 
     public MeterReadingTaskExecutionServiceImpl(
             MeterReadingTaskMapper meterReadingTaskMapper,
             MeterReadingResultMapper meterReadingResultMapper,
-            MeterMapper meterMapper
+            MeterReadingResultImageMapper resultImageMapper,
+            MeterImageMapper meterImageMapper,
+            MeterMapper meterMapper,
+            OssProperties ossProperties
     ) {
         this.meterReadingTaskMapper = meterReadingTaskMapper;
         this.meterReadingResultMapper = meterReadingResultMapper;
+        this.resultImageMapper = resultImageMapper;
+        this.meterImageMapper = meterImageMapper;
         this.meterMapper = meterMapper;
+        this.ossProperties = ossProperties;
     }
 
     /**
@@ -125,7 +147,7 @@ public class MeterReadingTaskExecutionServiceImpl
                 taskId,
                 resultDTO.version(),
                 resultDTO.readingValue(),
-                resultDTO.imageUrl(),
+                resultDTO.imageIds(),
                 null,
                 resultDTO.remark()
         );
@@ -181,7 +203,7 @@ public class MeterReadingTaskExecutionServiceImpl
                 taskId,
                 resultDTO.version(),
                 resultDTO.recognizedReading(),
-                resultDTO.imageUrl(),
+                resultDTO.imageIds(),
                 resultDTO.confidence(),
                 resultDTO.remark()
         );
@@ -280,7 +302,7 @@ public class MeterReadingTaskExecutionServiceImpl
             Long taskId,
             Integer expectedVersion,
             BigDecimal readingValue,
-            String imageUrl,
+            List<Long> imageIds,
             BigDecimal confidence,
             String remark
     ) {
@@ -296,6 +318,15 @@ public class MeterReadingTaskExecutionServiceImpl
         );
         validateReading(task.getMeterId(), readingValue);
 
+        // 锁定并校验所有图片，保证它们属于当前任务和当前执行者，
+        // 同时阻止图片在结果提交过程中被删除或被另一份结果重复绑定。
+        List<Long> orderedImageIds = requireSubmissionImages(
+                executorType,
+                executorId,
+                taskId,
+                imageIds
+        );
+
         LocalDateTime submittedAt = LocalDateTime.now();
         MeterReadingResult result = MeterReadingResult.builder()
                 .taskId(taskId)
@@ -308,7 +339,6 @@ public class MeterReadingTaskExecutionServiceImpl
                         ? executorId
                         : null)
                 .readingValue(readingValue)
-                .imageUrl(imageUrl)
                 .recognitionConfidence(confidence)
                 .remark(remark)
                 .reviewStatus(MeterReadingReviewStatus.PENDING.name())
@@ -320,6 +350,24 @@ public class MeterReadingTaskExecutionServiceImpl
         } catch (DuplicateKeyException exception) {
             throw new ResourceConflictException(
                     "该任务已经提交过抄表结果",
+                    exception
+            );
+        }
+
+        // 结果与多张图片的关联和任务状态更新都处于本事务中，
+        // 任意一步失败都会连同结果记录一起回滚。
+        try {
+            for (int index = 0; index < orderedImageIds.size(); index++) {
+                resultImageMapper.insert(MeterReadingResultImage.builder()
+                        .resultId(result.getId())
+                        .imageId(orderedImageIds.get(index))
+                        .sortOrder(index)
+                        .createdAt(submittedAt)
+                        .build());
+            }
+        } catch (DuplicateKeyException exception) {
+            throw new ResourceConflictException(
+                    "提交的图片已经绑定其他抄表结果",
                     exception
             );
         }
@@ -349,6 +397,68 @@ public class MeterReadingTaskExecutionServiceImpl
                 expectedVersion + 1,
                 submittedAt
         );
+    }
+
+    /**
+     * 对提交图片做业务归属校验，并通过 FOR UPDATE 保证绑定和删除互斥。
+     */
+    private List<Long> requireSubmissionImages(
+            TaskExecutorType executorType,
+            Long executorId,
+            Long taskId,
+            List<Long> imageIds
+    ) {
+        if (imageIds == null || imageIds.isEmpty()) {
+            throw new IllegalArgumentException("至少选择一张抄表图片");
+        }
+        if (imageIds.size() > ossProperties.getMaxImagesPerTask()) {
+            throw new IllegalArgumentException("提交图片数量超过任务上限");
+        }
+
+        LinkedHashSet<Long> uniqueIds = new LinkedHashSet<>(imageIds);
+        if (uniqueIds.size() != imageIds.size()) {
+            throw new IllegalArgumentException("图片ID不能重复");
+        }
+        List<Long> orderedIds = new ArrayList<>(uniqueIds);
+        List<MeterImage> lockedImages =
+                meterImageMapper.selectForSubmission(orderedIds);
+        if (lockedImages.size() != orderedIds.size()) {
+            throw new ResourceNotFoundException("存在未找到的抄表图片");
+        }
+
+        Map<Long, MeterImage> imageById = lockedImages.stream()
+                .collect(Collectors.toMap(
+                        MeterImage::getId,
+                        Function.identity()
+                ));
+        for (Long imageId : orderedIds) {
+            MeterImage image = imageById.get(imageId);
+            boolean usable = image != null
+                    && taskId.equals(image.getTaskId())
+                    && executorType.name().equals(image.getUploaderType())
+                    && executorId.equals(image.getUploaderId())
+                    && Integer.valueOf(0).equals(image.getDeleted())
+                    && MeterImageStatus.VALID.name()
+                    .equals(image.getImageStatus())
+                    && MeterImageStorageStatus.STORED.name()
+                    .equals(image.getStorageStatus());
+            if (!usable) {
+                throw new IllegalArgumentException(
+                        "图片不存在、已失效或不属于当前任务执行者"
+                );
+            }
+        }
+
+        long boundCount = resultImageMapper.selectCount(
+                Wrappers.<MeterReadingResultImage>lambdaQuery()
+                        .in(MeterReadingResultImage::getImageId, orderedIds)
+        );
+        if (boundCount > 0) {
+            throw new ResourceConflictException(
+                    "提交的图片已经绑定抄表结果"
+            );
+        }
+        return orderedIds;
     }
 
     /**
