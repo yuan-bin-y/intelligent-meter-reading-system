@@ -123,6 +123,14 @@
         ORDER BY image.created_at ASC, image.id ASC
     </select>
 
+    <select id="selectResultImages"
+            resultType="com.byy.meterreading.mapper.projection.MeterImageRow">
+        SELECT <include refid="imageDetailColumns"/>
+        <include refid="imageDetailJoins"/>
+        WHERE result_image.result_id = #{resultId}
+        ORDER BY result_image.sort_order ASC, image.id ASC
+    </select>
+
     <select id="selectForSubmission"
             resultType="com.byy.meterreading.model.MeterImage">
         SELECT image.*

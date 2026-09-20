@@ -36,6 +36,11 @@ public interface MeterImageMapper extends BaseMapper<MeterImage> {
             @Param("includeDeleted") boolean includeDeleted
     );
 
+    /** 查询某一次提交结果实际绑定的图片。 */
+    List<MeterImageRow> selectResultImages(
+            @Param("resultId") Long resultId
+    );
+
     /** 结果提交事务中锁定全部图片，防止并发删除或重复绑定。 */
     List<MeterImage> selectForSubmission(
             @Param("imageIds") List<Long> imageIds

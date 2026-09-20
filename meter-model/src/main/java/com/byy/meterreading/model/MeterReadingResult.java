@@ -25,8 +25,10 @@ public class MeterReadingResult {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /** 每个任务只能产生一条待审核结果。 */
+    /** 关联任务；同一个任务可以因审核驳回产生多次提交结果。 */
     private Long taskId;
+    /** 同一任务每次重新提交生成新的递增尝试序号。 */
+    private Integer attemptNo;
     private Long meterId;
 
     /** METER_READER 或 DEVICE。 */

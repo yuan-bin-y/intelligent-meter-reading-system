@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.MeterReadingResultMapper">
+
+    <sql id="resultColumns">
+        result.id AS result_id,
+        result.task_id,
+        task.task_no,
+        result.attempt_no,
+        meter.id AS meter_id,
+        meter.meter_no,
+        meter.meter_name,
+        meter.meter_type,
+        meter.unit,
+        result.reading_value,
+        result.source_type,
+        CASE result.source_type
+            WHEN 'METER_READER' THEN result.meter_reader_id
+            WHEN 'DEVICE' THEN result.device_id
+        END AS executor_id,
+        CASE result.source_type
+            WHEN 'METER_READER' THEN reader.username
+            WHEN 'DEVICE' THEN device.device_no
+        END AS executor_code,
+        CASE result.source_type
+            WHEN 'METER_READER' THEN reader.display_name
+            WHEN 'DEVICE' THEN device.device_name
+        END AS executor_name,
+        result.recognition_confidence,
+        result.remark,
+        result.review_status,
+        task.task_status,
+        result.version AS result_version,
+        task.version AS task_version,
+        result.submitted_at
+    </sql>
+
+    <sql id="resultJoins">
+        FROM meter_reading_result AS result
+        INNER JOIN meter_reading_task AS task ON task.id = result.task_id
+        INNER JOIN meter ON meter.id = result.meter_id
+        LEFT JOIN sys_user AS reader
+               ON reader.id = result.meter_reader_id
+              AND result.source_type = 'METER_READER'
+        LEFT JOIN device
+               ON device.id = result.device_id
+              AND result.source_type = 'DEVICE'
+    </sql>
+
+    <select id="selectResultPage"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingResultRow">
+        SELECT <include refid="resultColumns"/>
+        <include refid="resultJoins"/>
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                task.task_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="sourceType != null">
+            AND result.source_type = #{sourceType}
+        </if>
+        <if test="reviewStatus != null">
+            AND result.review_status = #{reviewStatus}
+        </if>
+        <if test="submittedAtStart != null">
+            AND result.submitted_at &gt;= #{submittedAtStart}
+        </if>
+        <if test="submittedAtEnd != null">
+            AND result.submitted_at &lt;= #{submittedAtEnd}
+        </if>
+        ORDER BY result.submitted_at DESC, result.id DESC
+    </select>
+
+    <select id="selectResultDetail"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingResultRow">
+        SELECT <include refid="resultColumns"/>
+        <include refid="resultJoins"/>
+        WHERE result.id = #{resultId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByIdForUpdate"
+            resultType="com.byy.meterreading.model.MeterReadingResult">
+        SELECT *
+        FROM meter_reading_result
+        WHERE id = #{resultId}
+        FOR UPDATE
+    </select>
+
+    <select id="selectNextAttemptNo" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(attempt_no), 0) + 1
+        FROM meter_reading_result
+        WHERE task_id = #{taskId}
+    </select>
+
+    <select id="selectLatestReaderResultId" resultType="java.lang.Long">
+        SELECT result.id
+        FROM meter_reading_result AS result
+        INNER JOIN meter_reading_task AS task ON task.id = result.task_id
+        WHERE result.task_id = #{taskId}
+          AND task.executor_type = 'METER_READER'
+          AND task.meter_reader_id = #{meterReaderId}
+        ORDER BY result.attempt_no DESC
+        LIMIT 1
+    </select>
+
+</mapper>

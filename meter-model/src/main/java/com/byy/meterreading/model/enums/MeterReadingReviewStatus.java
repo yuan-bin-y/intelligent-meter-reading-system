@@ -18,4 +18,10 @@ public enum MeterReadingReviewStatus {
     public String getDescription() {
         return description;
     }
+
+    /** 一次提交结果只允许从待审核进入一个终态。 */
+    public boolean canTransitionTo(MeterReadingReviewStatus target) {
+        return this == PENDING
+                && (target == APPROVED || target == REJECTED);
+    }
 }

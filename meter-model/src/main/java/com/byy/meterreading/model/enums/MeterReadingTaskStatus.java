@@ -39,7 +39,8 @@ public enum MeterReadingTaskStatus {
                     || target == FAILED
                     || target == CANCELLED;
             case PENDING_REVIEW -> target == COMPLETED
-                    || target == PROCESSING;
+                    || target == PROCESSING
+                    || target == FAILED;
             case FAILED -> target == PENDING
                     || target == CANCELLED;
             case COMPLETED, CANCELLED -> false;

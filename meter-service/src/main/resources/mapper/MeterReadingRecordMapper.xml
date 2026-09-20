@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.MeterReadingRecordMapper">
+
+    <sql id="recordColumns">
+        record.id AS record_id,
+        record.result_id,
+        record.task_id,
+        task.task_no,
+        result.attempt_no,
+        meter.id AS meter_id,
+        meter.meter_no,
+        meter.meter_name,
+        meter.meter_type,
+        meter.unit,
+        record.reading_value,
+        record.reading_at,
+        record.source_type,
+        record.executor_id,
+        CASE record.source_type
+            WHEN 'METER_READER' THEN reader.username
+            WHEN 'DEVICE' THEN device.device_no
+        END AS executor_code,
+        CASE record.source_type
+            WHEN 'METER_READER' THEN reader.display_name
+            WHEN 'DEVICE' THEN device.device_name
+        END AS executor_name,
+        record.reviewed_by AS reviewer_id,
+        reviewer.display_name AS reviewer_name,
+        record.reviewed_at
+    </sql>
+
+    <sql id="recordJoins">
+        FROM meter_reading_record AS record
+        INNER JOIN meter_reading_result AS result
+                ON result.id = record.result_id
+        INNER JOIN meter_reading_task AS task
+                ON task.id = record.task_id
+        INNER JOIN meter ON meter.id = record.meter_id
+        LEFT JOIN sys_user AS reader
+               ON reader.id = record.executor_id
+              AND record.source_type = 'METER_READER'
+        LEFT JOIN device
+               ON device.id = record.executor_id
+              AND record.source_type = 'DEVICE'
+        INNER JOIN sys_user AS reviewer
+                ON reviewer.id = record.reviewed_by
+    </sql>
+
+    <select id="selectRecordPage"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingRecordRow">
+        SELECT <include refid="recordColumns"/>
+        <include refid="recordJoins"/>
+        WHERE 1 = 1
+        <if test="residentId != null">
+            AND EXISTS (
+                SELECT 1
+                FROM resident_meter AS binding
+                WHERE binding.resident_id = #{residentId}
+                  AND binding.meter_id = record.meter_id
+            )
+        </if>
+        <if test="keyword != null">
+            AND (
+                task.task_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_no LIKE CONCAT('%', #{keyword}, '%')
+                OR meter.meter_name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="meterId != null">
+            AND record.meter_id = #{meterId}
+        </if>
+        <if test="sourceType != null">
+            AND record.source_type = #{sourceType}
+        </if>
+        <if test="readingAtStart != null">
+            AND record.reading_at &gt;= #{readingAtStart}
+        </if>
+        <if test="readingAtEnd != null">
+            AND record.reading_at &lt;= #{readingAtEnd}
+        </if>
+        ORDER BY record.reading_at DESC, record.id DESC
+    </select>
+
+    <select id="selectRecordDetail"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingRecordRow">
+        SELECT <include refid="recordColumns"/>
+        <include refid="recordJoins"/>
+        WHERE record.id = #{recordId}
+        <if test="residentId != null">
+            AND EXISTS (
+                SELECT 1
+                FROM resident_meter AS binding
+                WHERE binding.resident_id = #{residentId}
+                  AND binding.meter_id = record.meter_id
+            )
+        </if>
+        LIMIT 1
+    </select>
+
+</mapper>

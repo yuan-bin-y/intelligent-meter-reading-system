@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户管理、表具管理、居民表具绑定、设备、告警、抄表任务及阿里云 OSS 抄表图片模块的 Apifox 测试文档。
-  version: 2.8.0
+  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核及正式抄表记录模块的 Apifox 测试文档。
+  version: 2.9.0
 
 servers:
   - url: http://localhost:8070
@@ -33,6 +33,10 @@ tags:
     description: 认证设备拉取、接收并提交分配给本设备的自动抄表任务
   - name: 抄表图片
     description: 抄表员和设备上传图片、管理员治理图片以及登录用户获取短时访问地址
+  - name: 抄表结果审核
+    description: 管理员和审核员查询、通过或驳回抄表结果
+  - name: 正式抄表记录
+    description: 管理员和居民查询审核通过后生成的不可修改正式记录
 
 paths:
   /api/v1/auth/register:
@@ -3423,6 +3427,28 @@ paths:
                 $ref: '#/components/schemas/ErrorResult'
 
   /api/v1/meter-reader/tasks/{taskId}/result:
+    get:
+      tags: [抄表结果审核]
+      summary: 抄表员查询本人最近一次提交结果
+      description: 返回最近一次提交、绑定图片以及该任务历次审核意见；任务必须属于当前 JWT 用户。
+      operationId: getLatestReaderSubmittedResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingResultDetailSuccessResult'
+        '404':
+          description: 任务不存在、不属于当前抄表员或尚未提交结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
     post:
       tags:
         - 抄表员任务
@@ -4019,6 +4045,228 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResult'
 
+  /api/v1/review/meter-reading-results:
+    get:
+      tags: [抄表结果审核]
+      summary: 分页查询抄表结果
+      description: ADMIN 和 AUDITOR 可按任务、表具、来源、审核状态及提交时间筛选。
+      operationId: listMeterReadingResultsForReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: keyword
+          in: query
+          schema: {type: string, maxLength: 64}
+        - name: sourceType
+          in: query
+          schema: {$ref: '#/components/schemas/TaskExecutorType'}
+        - name: reviewStatus
+          in: query
+          schema: {$ref: '#/components/schemas/MeterReadingReviewStatus'}
+        - name: submittedAtStart
+          in: query
+          schema: {type: string, format: date-time}
+        - name: submittedAtEnd
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingResultPageSuccessResult'
+        '403':
+          description: 当前用户不是管理员或审核员
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/review/meter-reading-results/{resultId}:
+    get:
+      tags: [抄表结果审核]
+      summary: 查询抄表结果详情
+      operationId: getMeterReadingResultForReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingResultDetailSuccessResult'
+        '404':
+          description: 抄表结果不存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/review/meter-reading-results/{resultId}/approve:
+    put:
+      tags: [抄表结果审核]
+      summary: 审核通过抄表结果
+      description: 在同一事务中更新结果、写审核历史、生成正式记录并将任务改为 COMPLETED。
+      operationId: approveMeterReadingResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApproveMeterReadingResultDTO'}
+            example: {resultVersion: 0, taskVersion: 2, remark: 读数和图片一致}
+      responses:
+        '200':
+          description: 审核通过
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingReviewDecisionSuccessResult'}
+        '400':
+          description: 状态不允许、没有有效图片或参数错误
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '409':
+          description: 结果或任务版本冲突，或正式记录已经存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/review/meter-reading-results/{resultId}/reject:
+    put:
+      tags: [抄表结果审核]
+      summary: 审核驳回抄表结果
+      description: 保留本次提交及图片，写入审核历史，并将任务改为 FAILED；管理员可随后调用已有重试接口。
+      operationId: rejectMeterReadingResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RejectMeterReadingResultDTO'}
+            example: {resultVersion: 0, taskVersion: 2, reason: 图片模糊，无法确认读数}
+      responses:
+        '200':
+          description: 驳回成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingReviewDecisionSuccessResult'}
+        '409':
+          description: 结果或任务版本冲突
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/admin/meter-reading-records:
+    get:
+      tags: [正式抄表记录]
+      summary: 管理员分页查询正式抄表记录
+      operationId: listAdminMeterReadingRecords
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecordPage'
+        - $ref: '#/components/parameters/RecordPageSize'
+        - $ref: '#/components/parameters/RecordKeyword'
+        - $ref: '#/components/parameters/RecordMeterId'
+        - $ref: '#/components/parameters/RecordSourceType'
+        - $ref: '#/components/parameters/ReadingAtStart'
+        - $ref: '#/components/parameters/ReadingAtEnd'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingRecordPageSuccessResult'}
+
+  /api/v1/admin/meter-reading-records/{recordId}:
+    get:
+      tags: [正式抄表记录]
+      summary: 管理员查询正式抄表记录详情
+      operationId: getAdminMeterReadingRecord
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecordIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingRecordDetailSuccessResult'}
+        '404':
+          description: 正式抄表记录不存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/resident/meter-reading-records:
+    get:
+      tags: [正式抄表记录]
+      summary: 居民分页查询本人表具正式记录
+      description: residentId 固定从 JWT 提取，SQL 强制校验 resident_meter 绑定关系。
+      operationId: listResidentMeterReadingRecords
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecordPage'
+        - $ref: '#/components/parameters/RecordPageSize'
+        - $ref: '#/components/parameters/RecordKeyword'
+        - $ref: '#/components/parameters/RecordMeterId'
+        - $ref: '#/components/parameters/RecordSourceType'
+        - $ref: '#/components/parameters/ReadingAtStart'
+        - $ref: '#/components/parameters/ReadingAtEnd'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingRecordPageSuccessResult'}
+
+  /api/v1/resident/meter-reading-records/{recordId}:
+    get:
+      tags: [正式抄表记录]
+      summary: 居民查询本人表具正式记录详情
+      operationId: getResidentMeterReadingRecord
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecordIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingRecordDetailSuccessResult'}
+        '404':
+          description: 记录不存在或对应表具不属于当前居民
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4136,6 +4384,48 @@ components:
         minLength: 1
         maxLength: 64
       example: 550e8400-e29b-41d4-a716-446655440000
+
+    RecordIdPath:
+      name: recordId
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+
+    RecordPage:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1}
+
+    RecordPageSize:
+      name: pageSize
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+
+    RecordKeyword:
+      name: keyword
+      in: query
+      description: 匹配任务编号、表号或表具名称
+      schema: {type: string, maxLength: 64}
+
+    RecordMeterId:
+      name: meterId
+      in: query
+      schema: {type: integer, format: int64, minimum: 1}
+
+    RecordSourceType:
+      name: sourceType
+      in: query
+      schema: {$ref: '#/components/schemas/TaskExecutorType'}
+
+    ReadingAtStart:
+      name: readingAtStart
+      in: query
+      schema: {type: string, format: date-time}
+
+    ReadingAtEnd:
+      name: readingAtEnd
+      in: query
+      schema: {type: string, format: date-time}
 
   schemas:
     CreateMeterDTO:
@@ -5516,6 +5806,176 @@ components:
         code: {type: string, enum: [OK]}
         message: {type: string, example: success}
         data: {$ref: '#/components/schemas/MeterImageAccessUrlVO'}
+        traceId: {type: string}
+
+    ApproveMeterReadingResultDTO:
+      type: object
+      required: [resultVersion, taskVersion]
+      properties:
+        resultVersion: {type: integer, minimum: 0}
+        taskVersion: {type: integer, minimum: 0}
+        remark: {type: string, maxLength: 500, nullable: true}
+
+    RejectMeterReadingResultDTO:
+      type: object
+      required: [resultVersion, taskVersion, reason]
+      properties:
+        resultVersion: {type: integer, minimum: 0}
+        taskVersion: {type: integer, minimum: 0}
+        reason: {type: string, minLength: 1, maxLength: 450}
+
+    MeterReadingResultListItemVO:
+      type: object
+      properties:
+        resultId: {type: integer, format: int64}
+        taskId: {type: integer, format: int64}
+        taskNo: {type: string}
+        attemptNo: {type: integer, minimum: 1}
+        meterId: {type: integer, format: int64}
+        meterNo: {type: string}
+        meterName: {type: string}
+        readingValue: {type: number}
+        sourceType: {$ref: '#/components/schemas/TaskExecutorType'}
+        sourceTypeName: {type: string}
+        executorId: {type: integer, format: int64}
+        executorName: {type: string}
+        reviewStatus: {$ref: '#/components/schemas/MeterReadingReviewStatus'}
+        reviewStatusName: {type: string}
+        taskStatus: {$ref: '#/components/schemas/MeterReadingTaskStatus'}
+        taskStatusName: {type: string}
+        resultVersion: {type: integer}
+        taskVersion: {type: integer}
+        submittedAt: {type: string, format: date-time}
+
+    MeterReadingReviewHistoryVO:
+      type: object
+      properties:
+        reviewId: {type: integer, format: int64}
+        resultId: {type: integer, format: int64}
+        attemptNo: {type: integer}
+        reviewAction: {$ref: '#/components/schemas/MeterReadingReviewStatus'}
+        reviewActionName: {type: string}
+        reviewerId: {type: integer, format: int64}
+        reviewerName: {type: string}
+        reviewReason: {type: string, nullable: true}
+        reviewedAt: {type: string, format: date-time}
+
+    MeterReadingResultDetailVO:
+      allOf:
+        - $ref: '#/components/schemas/MeterReadingResultListItemVO'
+        - type: object
+          properties:
+            meterType: {type: string}
+            unit: {type: string}
+            executorCode: {type: string}
+            recognitionConfidence: {type: number, nullable: true}
+            remark: {type: string, nullable: true}
+            images:
+              type: array
+              items: {$ref: '#/components/schemas/MeterImageItemVO'}
+            reviewHistory:
+              type: array
+              items: {$ref: '#/components/schemas/MeterReadingReviewHistoryVO'}
+
+    MeterReadingReviewDecisionVO:
+      type: object
+      properties:
+        resultId: {type: integer, format: int64}
+        reviewStatus: {$ref: '#/components/schemas/MeterReadingReviewStatus'}
+        resultVersion: {type: integer}
+        taskId: {type: integer, format: int64}
+        taskStatus: {$ref: '#/components/schemas/MeterReadingTaskStatus'}
+        taskVersion: {type: integer}
+        recordId: {type: integer, format: int64, nullable: true}
+        reviewedAt: {type: string, format: date-time}
+
+    MeterReadingRecordListItemVO:
+      type: object
+      properties:
+        recordId: {type: integer, format: int64}
+        resultId: {type: integer, format: int64}
+        taskId: {type: integer, format: int64}
+        taskNo: {type: string}
+        meterId: {type: integer, format: int64}
+        meterNo: {type: string}
+        meterName: {type: string}
+        meterType: {type: string}
+        unit: {type: string}
+        readingValue: {type: number}
+        readingAt: {type: string, format: date-time}
+        sourceType: {$ref: '#/components/schemas/TaskExecutorType'}
+        sourceTypeName: {type: string}
+        executorId: {type: integer, format: int64}
+        executorName: {type: string}
+        reviewerId: {type: integer, format: int64}
+        reviewerName: {type: string}
+        reviewedAt: {type: string, format: date-time}
+
+    MeterReadingRecordDetailVO:
+      allOf:
+        - $ref: '#/components/schemas/MeterReadingRecordListItemVO'
+        - type: object
+          properties:
+            attemptNo: {type: integer}
+            executorCode: {type: string}
+            images:
+              type: array
+              items: {$ref: '#/components/schemas/MeterImageItemVO'}
+
+    MeterReadingResultPageSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: object
+          properties:
+            records:
+              type: array
+              items: {$ref: '#/components/schemas/MeterReadingResultListItemVO'}
+            total: {type: integer, format: int64}
+            page: {type: integer, format: int64}
+            pageSize: {type: integer, format: int64}
+        traceId: {type: string}
+
+    MeterReadingResultDetailSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterReadingResultDetailVO'}
+        traceId: {type: string}
+
+    MeterReadingReviewDecisionSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterReadingReviewDecisionVO'}
+        traceId: {type: string}
+
+    MeterReadingRecordPageSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: object
+          properties:
+            records:
+              type: array
+              items: {$ref: '#/components/schemas/MeterReadingRecordListItemVO'}
+            total: {type: integer, format: int64}
+            page: {type: integer, format: int64}
+            pageSize: {type: integer, format: int64}
+        traceId: {type: string}
+
+    MeterReadingRecordDetailSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/MeterReadingRecordDetailVO'}
         traceId: {type: string}
 
     SubmitManualReadingResultDTO:

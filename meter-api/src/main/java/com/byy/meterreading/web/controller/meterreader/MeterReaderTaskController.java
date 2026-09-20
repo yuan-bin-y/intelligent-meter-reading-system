@@ -5,11 +5,13 @@ import com.byy.meterreading.dto.meterreadingtask.MeterReadingTaskVersionDTO;
 import com.byy.meterreading.dto.meterreadingtask.MyMeterReadingTaskPageQueryDTO;
 import com.byy.meterreading.dto.meterreadingtask.SubmitManualReadingResultDTO;
 import com.byy.meterreading.service.MeterReadingTaskExecutionService;
+import com.byy.meterreading.service.MeterReadingReviewService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingSubmissionVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskDetailVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskListItemVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskVersionVO;
+import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultDetailVO;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -33,11 +35,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeterReaderTaskController {
 
     private final MeterReadingTaskExecutionService executionService;
+    private final MeterReadingReviewService reviewService;
 
     public MeterReaderTaskController(
-            MeterReadingTaskExecutionService executionService
+            MeterReadingTaskExecutionService executionService,
+            MeterReadingReviewService reviewService
     ) {
         this.executionService = executionService;
+        this.reviewService = reviewService;
     }
 
     /**
@@ -94,6 +99,17 @@ public class MeterReaderTaskController {
                 extractUserId(jwt),
                 taskId,
                 resultDTO
+        ));
+    }
+
+    /** 查询本人任务最近一次提交结果以及历次审核意见。 */
+    @GetMapping("/{taskId}/result")
+    public Result<MeterReadingResultDetailVO> getSubmittedResult(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long taskId
+    ) {
+        return Result.success(reviewService.getLatestReaderResult(
+                extractUserId(jwt), taskId
         ));
     }
 

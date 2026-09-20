@@ -328,8 +328,12 @@ public class MeterReadingTaskExecutionServiceImpl
         );
 
         LocalDateTime submittedAt = LocalDateTime.now();
+        Integer attemptNo = meterReadingResultMapper.selectNextAttemptNo(
+                taskId
+        );
         MeterReadingResult result = MeterReadingResult.builder()
                 .taskId(taskId)
+                .attemptNo(attemptNo)
                 .meterId(task.getMeterId())
                 .sourceType(executorType.name())
                 .meterReaderId(executorType == TaskExecutorType.METER_READER
@@ -349,7 +353,7 @@ public class MeterReadingTaskExecutionServiceImpl
             meterReadingResultMapper.insert(result);
         } catch (DuplicateKeyException exception) {
             throw new ResourceConflictException(
-                    "该任务已经提交过抄表结果",
+                    "本次任务结果已经被并发提交，请刷新后重试",
                     exception
             );
         }
