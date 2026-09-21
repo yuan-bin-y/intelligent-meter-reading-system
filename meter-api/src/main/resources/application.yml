@@ -19,6 +19,8 @@ spring:
       mandatory: true
 
 app:
+  websocket:
+    allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   storage:
     oss:
       enabled: ${OSS_ENABLED:false}

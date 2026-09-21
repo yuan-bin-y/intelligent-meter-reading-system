@@ -138,6 +138,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/refresh"
                         ).permitAll()
+                        // HTTP 层只允许完成 WebSocket 握手，后续 STOMP CONNECT
+                        // 必须由 WebSocket JWT 拦截器重新完成身份认证。
+                        .requestMatchers("/ws/chat", "/ws/chat/**")
+                        .permitAll()
                         .requestMatchers("/api/v1/device/**")
                         .hasRole("DEVICE")
                         .requestMatchers("/api/v1/internal/ai/**")

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.ChatConversationMapper">
+
+    <!-- record 没有无参构造器，因此明确声明构造参数及顺序。 -->
+    <resultMap id="conversationListResultMap"
+               type="com.byy.meterreading.vo.chat.ChatConversationListVO">
+        <constructor>
+            <idArg column="conversation_id" javaType="java.lang.Long"/>
+            <arg column="conversation_type"
+                 javaType="com.byy.meterreading.model.enums.ChatConversationType"/>
+            <arg column="conversation_type_name" javaType="java.lang.String"/>
+            <arg column="task_id" javaType="java.lang.Long"/>
+            <arg column="task_no" javaType="java.lang.String"/>
+            <arg column="subject" javaType="java.lang.String"/>
+            <arg column="status"
+                 javaType="com.byy.meterreading.model.enums.ChatConversationStatus"/>
+            <arg column="status_name" javaType="java.lang.String"/>
+            <arg column="last_message_id" javaType="java.lang.Long"/>
+            <arg column="last_message_content" javaType="java.lang.String"/>
+            <arg column="last_message_sender_id" javaType="java.lang.Long"/>
+            <arg column="last_message_sender_role"
+                 javaType="com.byy.meterreading.model.enums.ChatMessageSenderRole"/>
+            <arg column="last_message_at" javaType="java.time.LocalDateTime"/>
+            <arg column="unread_count" javaType="_long"/>
+            <arg column="version" javaType="java.lang.Integer"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <!-- members 通过嵌套查询一次性装入详情 record。 -->
+    <resultMap id="conversationDetailResultMap"
+               type="com.byy.meterreading.vo.chat.ChatConversationDetailVO">
+        <constructor>
+            <idArg column="conversation_id" javaType="java.lang.Long"/>
+            <arg column="conversation_type"
+                 javaType="com.byy.meterreading.model.enums.ChatConversationType"/>
+            <arg column="conversation_type_name" javaType="java.lang.String"/>
+            <arg column="task_id" javaType="java.lang.Long"/>
+            <arg column="task_no" javaType="java.lang.String"/>
+            <arg column="meter_no" javaType="java.lang.String"/>
+            <arg column="meter_name" javaType="java.lang.String"/>
+            <arg column="subject" javaType="java.lang.String"/>
+            <arg column="status"
+                 javaType="com.byy.meterreading.model.enums.ChatConversationStatus"/>
+            <arg column="status_name" javaType="java.lang.String"/>
+            <arg column="created_by" javaType="java.lang.Long"/>
+            <arg column="creator_display_name" javaType="java.lang.String"/>
+            <arg column="conversation_id"
+                 javaType="java.util.List"
+                 select="com.byy.meterreading.mapper.ChatConversationMemberMapper.selectConversationMembers"/>
+            <arg column="closed_by" javaType="java.lang.Long"/>
+            <arg column="closed_by_display_name" javaType="java.lang.String"/>
+            <arg column="close_reason" javaType="java.lang.String"/>
+            <arg column="closed_at" javaType="java.time.LocalDateTime"/>
+            <arg column="version" javaType="java.lang.Integer"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="conversationListColumns">
+        c.id AS conversation_id,
+        c.conversation_type,
+        CASE c.conversation_type
+            WHEN 'TASK_SERVICE' THEN '任务沟通'
+            WHEN 'ADMIN_SUPPORT' THEN '管理员客服'
+        END AS conversation_type_name,
+        c.task_id,
+        task.task_no,
+        c.subject,
+        c.status,
+        CASE c.status
+            WHEN 'WAITING' THEN '等待管理员认领'
+            WHEN 'ACTIVE' THEN '沟通中'
+            WHEN 'CLOSED' THEN '已关闭'
+        END AS status_name,
+        c.last_message_id,
+        CASE
+            WHEN last_message.deleted = 1 THEN '[消息已删除]'
+            ELSE last_message.content
+        END AS last_message_content,
+        last_message.sender_id AS last_message_sender_id,
+        last_message.sender_role AS last_message_sender_role,
+        c.last_message_at,
+        c.version,
+        c.created_at,
+        c.updated_at
+    </sql>
+
+    <select id="selectByTaskId"
+            resultType="com.byy.meterreading.model.ChatConversation">
+        SELECT *
+        FROM chat_conversation
+        WHERE conversation_type = #{conversationType}
+          AND task_id = #{taskId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByIdForUpdate"
+            resultType="com.byy.meterreading.model.ChatConversation">
+        SELECT *
+        FROM chat_conversation
+        WHERE id = #{conversationId}
+        FOR UPDATE
+    </select>
+
+    <!--
+        成员表限定当前用户可见范围；已读游标只统计其他成员和系统产生的消息。
+    -->
+    <select id="selectMyConversationPage"
+            resultMap="conversationListResultMap">
+        SELECT <include refid="conversationListColumns"/>,
+               (
+                   SELECT COUNT(*)
+                   FROM chat_message AS unread_message
+                   WHERE unread_message.conversation_id = c.id
+                     AND unread_message.deleted = 0
+                     AND unread_message.id &gt; COALESCE(self_member.last_read_message_id, 0)
+                     AND (
+                         unread_message.sender_id IS NULL
+                         OR unread_message.sender_id &lt;&gt; #{userId}
+                     )
+               ) AS unread_count
+        FROM chat_conversation AS c
+        INNER JOIN chat_conversation_member AS self_member
+                ON self_member.conversation_id = c.id
+               AND self_member.user_id = #{userId}
+               AND self_member.left_at IS NULL
+        LEFT JOIN meter_reading_task AS task
+               ON task.id = c.task_id
+        LEFT JOIN chat_message AS last_message
+               ON last_message.id = c.last_message_id
+        WHERE 1 = 1
+        <if test="conversationType != null">
+            AND c.conversation_type = #{conversationType}
+        </if>
+        <if test="status != null">
+            AND c.status = #{status}
+        </if>
+        ORDER BY COALESCE(c.last_message_at, c.created_at) DESC,
+                 c.id DESC
+    </select>
+
+    <!-- 管理员全量列表不绑定具体成员，因此 unreadCount 固定为 0。 -->
+    <select id="selectAdminConversationPage"
+            resultMap="conversationListResultMap">
+        SELECT <include refid="conversationListColumns"/>,
+               CAST(0 AS SIGNED) AS unread_count
+        FROM chat_conversation AS c
+        LEFT JOIN meter_reading_task AS task
+               ON task.id = c.task_id
+        LEFT JOIN chat_message AS last_message
+               ON last_message.id = c.last_message_id
+        WHERE 1 = 1
+        <if test="conversationType != null">
+            AND c.conversation_type = #{conversationType}
+        </if>
+        <if test="status != null">
+            AND c.status = #{status}
+        </if>
+        ORDER BY COALESCE(c.last_message_at, c.created_at) DESC,
+                 c.id DESC
+    </select>
+
+    <select id="selectConversationDetail"
+            resultMap="conversationDetailResultMap">
+        SELECT c.id AS conversation_id,
+               c.conversation_type,
+               CASE c.conversation_type
+                   WHEN 'TASK_SERVICE' THEN '任务沟通'
+                   WHEN 'ADMIN_SUPPORT' THEN '管理员客服'
+               END AS conversation_type_name,
+               c.task_id,
+               task.task_no,
+               meter.meter_no,
+               meter.meter_name,
+               c.subject,
+               c.status,
+               CASE c.status
+                   WHEN 'WAITING' THEN '等待管理员认领'
+                   WHEN 'ACTIVE' THEN '沟通中'
+                   WHEN 'CLOSED' THEN '已关闭'
+               END AS status_name,
+               c.created_by,
+               creator.display_name AS creator_display_name,
+               c.closed_by,
+               closer.display_name AS closed_by_display_name,
+               c.close_reason,
+               c.closed_at,
+               c.version,
+               c.created_at,
+               c.updated_at
+        FROM chat_conversation AS c
+        LEFT JOIN meter_reading_task AS task
+               ON task.id = c.task_id
+        LEFT JOIN meter
+               ON meter.id = task.meter_id
+        INNER JOIN sys_user AS creator
+                ON creator.id = c.created_by
+        LEFT JOIN sys_user AS closer
+               ON closer.id = c.closed_by
+        WHERE c.id = #{conversationId}
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.ChatConversationMemberMapper">
+
+    <resultMap id="chatMemberResultMap"
+               type="com.byy.meterreading.vo.chat.ChatMemberVO">
+        <constructor>
+            <idArg column="user_id" javaType="java.lang.Long"/>
+            <arg column="username" javaType="java.lang.String"/>
+            <arg column="display_name" javaType="java.lang.String"/>
+            <arg column="member_role"
+                 javaType="com.byy.meterreading.model.enums.ChatMemberRole"/>
+            <arg column="member_role_name" javaType="java.lang.String"/>
+            <arg column="last_read_message_id" javaType="java.lang.Long"/>
+            <arg column="last_read_at" javaType="java.time.LocalDateTime"/>
+            <arg column="joined_at" javaType="java.time.LocalDateTime"/>
+            <arg column="left_at" javaType="java.time.LocalDateTime"/>
+            <arg column="active" javaType="_boolean"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 保留已经离开的管理员，便于展示客服转交历史。 -->
+    <select id="selectConversationMembers"
+            resultMap="chatMemberResultMap">
+        SELECT member.user_id,
+               user.username,
+               user.display_name,
+               member.member_role,
+               CASE member.member_role
+                   WHEN 'RESIDENT' THEN '居民'
+                   WHEN 'METER_READER' THEN '抄表员'
+                   WHEN 'ADMIN' THEN '管理员'
+               END AS member_role_name,
+               member.last_read_message_id,
+               member.last_read_at,
+               member.joined_at,
+               member.left_at,
+               CASE WHEN member.left_at IS NULL THEN 1 ELSE 0 END AS active
+        FROM chat_conversation_member AS member
+        INNER JOIN sys_user AS user
+                ON user.id = member.user_id
+        WHERE member.conversation_id = #{conversationId}
+        ORDER BY active DESC,
+                 member.joined_at ASC,
+                 member.user_id ASC
+    </select>
+
+    <!-- 条件更新保证读取游标只能增大，旧的并发请求不会覆盖新进度。 -->
+    <update id="advanceReadCursor">
+        UPDATE chat_conversation_member
+        SET last_read_message_id = #{lastReadMessageId},
+            last_read_at = #{lastReadAt}
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+          AND left_at IS NULL
+          AND (
+              last_read_message_id IS NULL
+              OR last_read_message_id &lt; #{lastReadMessageId}
+          )
+    </update>
+
+</mapper>

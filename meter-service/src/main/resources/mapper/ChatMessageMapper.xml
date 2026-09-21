@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.ChatMessageMapper">
+
+    <resultMap id="chatMessageResultMap"
+               type="com.byy.meterreading.vo.chat.ChatMessageVO">
+        <constructor>
+            <idArg column="message_id" javaType="java.lang.Long"/>
+            <arg column="conversation_id" javaType="java.lang.Long"/>
+            <arg column="client_message_id" javaType="java.lang.String"/>
+            <arg column="sender_id" javaType="java.lang.Long"/>
+            <arg column="sender_display_name" javaType="java.lang.String"/>
+            <arg column="sender_role"
+                 javaType="com.byy.meterreading.model.enums.ChatMessageSenderRole"/>
+            <arg column="sender_role_name" javaType="java.lang.String"/>
+            <arg column="message_type"
+                 javaType="com.byy.meterreading.model.enums.ChatMessageType"/>
+            <arg column="message_type_name" javaType="java.lang.String"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="deleted" javaType="_boolean"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <!--
+        使用主键游标并按 ID 倒序查询。Service 会多取一条判断 hasMore，
+        然后再把当前批次反转为前端展示所需的时间正序。
+    -->
+    <select id="selectMessageHistory"
+            resultMap="chatMessageResultMap">
+        SELECT message.id AS message_id,
+               message.conversation_id,
+               message.client_message_id,
+               message.sender_id,
+               CASE
+                   WHEN message.sender_role = 'SYSTEM' THEN '系统'
+                   ELSE sender.display_name
+               END AS sender_display_name,
+               message.sender_role,
+               CASE message.sender_role
+                   WHEN 'RESIDENT' THEN '居民'
+                   WHEN 'METER_READER' THEN '抄表员'
+                   WHEN 'ADMIN' THEN '管理员'
+                   WHEN 'SYSTEM' THEN '系统'
+               END AS sender_role_name,
+               message.message_type,
+               CASE message.message_type
+                   WHEN 'TEXT' THEN '文本消息'
+                   WHEN 'SYSTEM' THEN '系统消息'
+               END AS message_type_name,
+               CASE
+                   WHEN message.deleted = 1 THEN '[消息已删除]'
+                   ELSE message.content
+               END AS content,
+               message.deleted,
+               message.created_at
+        FROM chat_message AS message
+        LEFT JOIN sys_user AS sender
+               ON sender.id = message.sender_id
+        WHERE message.conversation_id = #{conversationId}
+        <if test="beforeMessageId != null">
+            AND message.id &lt; #{beforeMessageId}
+        </if>
+        ORDER BY message.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 当前用户自己发送的消息不计入未读；系统消息计入未读。 -->
+    <select id="countUnreadMessages" resultType="long">
+        SELECT COUNT(*)
+        FROM chat_conversation_member AS self_member
+        INNER JOIN chat_message AS message
+                ON message.conversation_id = self_member.conversation_id
+               AND message.id &gt; COALESCE(self_member.last_read_message_id, 0)
+               AND message.deleted = 0
+               AND (
+                   message.sender_id IS NULL
+                   OR message.sender_id &lt;&gt; #{userId}
+               )
+        WHERE self_member.user_id = #{userId}
+          AND self_member.left_at IS NULL
+    </select>
+
+    <select id="countUnreadConversations" resultType="long">
+        SELECT COUNT(DISTINCT self_member.conversation_id)
+        FROM chat_conversation_member AS self_member
+        INNER JOIN chat_message AS message
+                ON message.conversation_id = self_member.conversation_id
+               AND message.id &gt; COALESCE(self_member.last_read_message_id, 0)
+               AND message.deleted = 0
+               AND (
+                   message.sender_id IS NULL
+                   OR message.sender_id &lt;&gt; #{userId}
+               )
+        WHERE self_member.user_id = #{userId}
+          AND self_member.left_at IS NULL
+    </select>
+
+</mapper>

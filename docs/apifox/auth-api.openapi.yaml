@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核及正式抄表记录模块的 Apifox 测试文档。
-  version: 2.9.0
+  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核、正式抄表记录及居民与抄表员实时沟通模块的 Apifox 测试文档。
+  version: 3.0.0
 
 servers:
   - url: http://localhost:8070
@@ -37,6 +37,30 @@ tags:
     description: 管理员和审核员查询、通过或驳回抄表结果
   - name: 正式抄表记录
     description: 管理员和居民查询审核通过后生成的不可修改正式记录
+  - name: 实时沟通
+    description: 居民、抄表员和管理员创建、查询、已读及关闭本人参与的聊天会话
+  - name: 聊天管理
+    description: 管理员认领、转交和统一查询客服会话
+
+x-websocket:
+  endpoint: ws://localhost:8070/ws/chat
+  protocol: STOMP 1.2
+  authentication:
+    command: CONNECT
+    header: Authorization
+    value: Bearer ${accessToken}
+  publish:
+    - destination: /app/chat.send
+      payloadSchema: '#/components/schemas/SendChatMessageDTO'
+    - destination: /app/chat.read
+      payloadSchema: '#/components/schemas/WebSocketReadChatMessageDTO'
+  subscribe:
+    - destination: /user/queue/chat
+      payloadSchema: '#/components/schemas/ChatMessageVO'
+    - destination: /user/queue/chat.read
+      payloadSchema: '#/components/schemas/ChatReadReceiptVO'
+    - destination: /user/queue/chat.errors
+      payloadSchema: '#/components/schemas/ChatWebSocketErrorVO'
 
 paths:
   /api/v1/auth/register:
@@ -4292,6 +4316,323 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResult'}
 
+  /api/v1/chat/conversations/task:
+    post:
+      tags: [实时沟通]
+      summary: 创建任务沟通会话
+      description: 居民或抄表员针对本人有权访问的抄表任务创建会话；同一任务只创建一条会话，重复请求返回原会话。
+      operationId: createTaskConversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateTaskConversationDTO'}
+            example:
+              taskId: 12
+      responses:
+        '200':
+          description: 创建成功或返回已存在会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationSuccessResult'}
+        '404':
+          description: 任务不存在或当前用户无权访问
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '409':
+          description: 会话被并发创建
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/chat/conversations/admin-support:
+    post:
+      tags: [实时沟通]
+      summary: 创建管理员客服会话
+      description: 居民创建等待管理员认领的客服会话，并在同一事务中保存首条文本消息。
+      operationId: createAdminSupportConversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateAdminSupportConversationDTO'}
+            example:
+              subject: 水表读数咨询
+              clientMessageId: msg_20260921_001
+              content: 本月读数与上月差异较大，请协助核实。
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationSuccessResult'}
+        '400':
+          description: 请求参数校验失败
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationErrorResult'}
+
+  /api/v1/chat/conversations:
+    get:
+      tags: [实时沟通]
+      summary: 分页查询我的会话
+      description: 只返回当前 JWT 用户仍是有效成员的会话。
+      operationId: listMyChatConversations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatPage'
+        - $ref: '#/components/parameters/ChatPageSize'
+        - $ref: '#/components/parameters/ChatConversationTypeQuery'
+        - $ref: '#/components/parameters/ChatConversationStatusQuery'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationPageSuccessResult'}
+
+  /api/v1/chat/conversations/{conversationId}:
+    get:
+      tags: [实时沟通]
+      summary: 查询会话详情
+      description: 返回会话业务信息、全部成员及其已读位置；当前用户必须是有效成员。
+      operationId: getChatConversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationDetailSuccessResult'}
+        '404':
+          description: 会话不存在或当前用户无权访问
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/chat/conversations/{conversationId}/messages:
+    get:
+      tags: [实时沟通]
+      summary: 游标分页查询会话消息
+      description: beforeMessageId 为空时读取最新一页；继续加载历史消息时传上次响应的 nextBeforeMessageId。
+      operationId: listChatMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+        - name: beforeMessageId
+          in: query
+          required: false
+          description: 查询此消息 ID 之前的历史消息
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: pageSize
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatMessagePageSuccessResult'}
+        '404':
+          description: 会话不存在或当前用户无权访问
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/chat/conversations/{conversationId}/read:
+    put:
+      tags: [实时沟通]
+      summary: 更新会话已读位置
+      description: 读取进度只向前推进，不会被较旧的消息 ID 回退。
+      operationId: markChatConversationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReadChatMessageDTO'}
+            example:
+              lastReadMessageId: 105
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatReadReceiptSuccessResult'}
+        '404':
+          description: 会话、消息不存在，或当前用户无权访问
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/chat/conversations/{conversationId}/close:
+    put:
+      tags: [实时沟通]
+      summary: 关闭会话
+      description: 当前有效成员关闭会话；version 用于乐观锁并发控制，关闭后不能继续发送消息。
+      operationId: closeChatConversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CloseChatConversationDTO'}
+            example:
+              version: 2
+              reason: 问题已处理完成
+      responses:
+        '200':
+          description: 关闭成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationSuccessResult'}
+        '409':
+          description: 会话版本冲突
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/chat/unread-count:
+    get:
+      tags: [实时沟通]
+      summary: 查询我的未读统计
+      description: 返回当前用户全部有效会话的未读消息数和存在未读消息的会话数。
+      operationId: getChatUnreadCount
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatUnreadCountSuccessResult'}
+
+  /api/v1/admin/chat/conversations/waiting:
+    get:
+      tags: [聊天管理]
+      summary: 查询等待认领的客服会话
+      description: 仅 ADMIN 可访问，返回状态为 WAITING 且尚未分配管理员的客服会话。
+      operationId: listWaitingAdminSupportConversations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatPage'
+        - $ref: '#/components/parameters/ChatPageSize'
+        - $ref: '#/components/parameters/ChatConversationTypeQuery'
+        - $ref: '#/components/parameters/ChatConversationStatusQuery'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationPageSuccessResult'}
+        '403':
+          description: 当前用户不是管理员
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/admin/chat/conversations/{conversationId}/claim:
+    put:
+      tags: [聊天管理]
+      summary: 认领客服会话
+      description: 当前管理员认领 WAITING 客服会话，新增管理员成员并写入系统消息。
+      operationId: claimAdminSupportConversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ClaimChatConversationDTO'}
+            example:
+              version: 0
+      responses:
+        '200':
+          description: 认领成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationSuccessResult'}
+        '409':
+          description: 会话已被认领或版本冲突
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/admin/chat/conversations/{conversationId}/transfer:
+    put:
+      tags: [聊天管理]
+      summary: 转交客服会话
+      description: 处理中的管理员将会话转交给另一名启用状态的 ADMIN，并写入系统消息。
+      operationId: transferAdminSupportConversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TransferChatConversationDTO'}
+            example:
+              targetAdminId: 8
+              version: 1
+              reason: 转交二线管理员处理
+      responses:
+        '200':
+          description: 转交成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationSuccessResult'}
+        '404':
+          description: 会话或目标管理员不存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '409':
+          description: 会话版本冲突或当前管理员不再负责该会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/admin/chat/conversations:
+    get:
+      tags: [聊天管理]
+      summary: 管理员分页查询全部会话
+      operationId: listAdminChatConversations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatPage'
+        - $ref: '#/components/parameters/ChatPageSize'
+        - $ref: '#/components/parameters/ChatConversationTypeQuery'
+        - $ref: '#/components/parameters/ChatConversationStatusQuery'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatConversationPageSuccessResult'}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4451,6 +4792,39 @@ components:
       name: readingAtEnd
       in: query
       schema: {type: string, format: date-time}
+
+    ConversationIdPath:
+      name: conversationId
+      in: path
+      required: true
+      description: 聊天会话 ID
+      schema: {type: integer, format: int64, minimum: 1}
+
+    ChatPage:
+      name: page
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, default: 1}
+
+    ChatPageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+
+    ChatConversationTypeQuery:
+      name: type
+      in: query
+      required: false
+      description: 会话业务类型
+      schema: {$ref: '#/components/schemas/ChatConversationType'}
+
+    ChatConversationStatusQuery:
+      name: status
+      in: query
+      required: false
+      description: 会话状态
+      schema: {$ref: '#/components/schemas/ChatConversationStatus'}
 
   schemas:
     CreateMeterDTO:
@@ -7440,6 +7814,343 @@ components:
         traceId:
           type: string
           description: 本次请求的追踪标识
+
+    ChatConversationType:
+      type: string
+      description: TASK_SERVICE 为居民与抄表员任务沟通；ADMIN_SUPPORT 为居民与管理员客服沟通
+      enum: [TASK_SERVICE, ADMIN_SUPPORT]
+
+    ChatConversationStatus:
+      type: string
+      description: WAITING 等待管理员认领；ACTIVE 沟通中；CLOSED 已关闭
+      enum: [WAITING, ACTIVE, CLOSED]
+
+    ChatMemberRole:
+      type: string
+      enum: [RESIDENT, METER_READER, ADMIN]
+
+    ChatMessageSenderRole:
+      type: string
+      enum: [RESIDENT, METER_READER, ADMIN, SYSTEM]
+
+    ChatMessageType:
+      type: string
+      enum: [TEXT, SYSTEM]
+
+    CreateTaskConversationDTO:
+      type: object
+      required: [taskId]
+      properties:
+        taskId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 抄表任务 ID
+
+    CreateAdminSupportConversationDTO:
+      type: object
+      required: [subject, clientMessageId, content]
+      properties:
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 128
+        clientMessageId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: 前端生成的消息幂等键，同一条消息重试时保持不变
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    ReadChatMessageDTO:
+      type: object
+      required: [lastReadMessageId]
+      properties:
+        lastReadMessageId:
+          type: integer
+          format: int64
+          minimum: 1
+
+    CloseChatConversationDTO:
+      type: object
+      required: [version, reason]
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 当前会话乐观锁版本
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    ClaimChatConversationDTO:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: 当前会话乐观锁版本
+
+    TransferChatConversationDTO:
+      type: object
+      required: [targetAdminId, version, reason]
+      properties:
+        targetAdminId:
+          type: integer
+          format: int64
+          minimum: 1
+        version:
+          type: integer
+          minimum: 0
+          description: 当前会话乐观锁版本
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    SendChatMessageDTO:
+      type: object
+      description: 发送到 STOMP 目的地 /app/chat.send 的消息体
+      required: [conversationId, clientMessageId, content]
+      properties:
+        conversationId:
+          type: integer
+          format: int64
+          minimum: 1
+        clientMessageId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_-]+$'
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    WebSocketReadChatMessageDTO:
+      type: object
+      description: 发送到 STOMP 目的地 /app/chat.read 的消息体
+      required: [conversationId, lastReadMessageId]
+      properties:
+        conversationId:
+          type: integer
+          format: int64
+          minimum: 1
+        lastReadMessageId:
+          type: integer
+          format: int64
+          minimum: 1
+
+    ChatConversationVO:
+      type: object
+      required:
+        - conversationId
+        - conversationType
+        - conversationTypeName
+        - subject
+        - status
+        - statusName
+        - version
+        - createdAt
+        - updatedAt
+      properties:
+        conversationId: {type: integer, format: int64}
+        conversationType: {$ref: '#/components/schemas/ChatConversationType'}
+        conversationTypeName: {type: string}
+        taskId: {type: integer, format: int64, nullable: true}
+        subject: {type: string}
+        status: {$ref: '#/components/schemas/ChatConversationStatus'}
+        statusName: {type: string}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    ChatConversationListVO:
+      type: object
+      properties:
+        conversationId: {type: integer, format: int64}
+        conversationType: {$ref: '#/components/schemas/ChatConversationType'}
+        conversationTypeName: {type: string}
+        taskId: {type: integer, format: int64, nullable: true}
+        taskNo: {type: string, nullable: true}
+        subject: {type: string}
+        status: {$ref: '#/components/schemas/ChatConversationStatus'}
+        statusName: {type: string}
+        lastMessageId: {type: integer, format: int64, nullable: true}
+        lastMessageContent: {type: string, nullable: true}
+        lastMessageSenderId: {type: integer, format: int64, nullable: true}
+        lastMessageSenderRole:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageSenderRole'
+          nullable: true
+        lastMessageAt: {type: string, format: date-time, nullable: true}
+        unreadCount: {type: integer, format: int64}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    ChatMemberVO:
+      type: object
+      properties:
+        userId: {type: integer, format: int64}
+        username: {type: string}
+        displayName: {type: string}
+        memberRole: {$ref: '#/components/schemas/ChatMemberRole'}
+        memberRoleName: {type: string}
+        lastReadMessageId: {type: integer, format: int64, nullable: true}
+        lastReadAt: {type: string, format: date-time, nullable: true}
+        joinedAt: {type: string, format: date-time}
+        leftAt: {type: string, format: date-time, nullable: true}
+        active: {type: boolean}
+
+    ChatConversationDetailVO:
+      type: object
+      properties:
+        conversationId: {type: integer, format: int64}
+        conversationType: {$ref: '#/components/schemas/ChatConversationType'}
+        conversationTypeName: {type: string}
+        taskId: {type: integer, format: int64, nullable: true}
+        taskNo: {type: string, nullable: true}
+        meterNo: {type: string, nullable: true}
+        meterName: {type: string, nullable: true}
+        subject: {type: string}
+        status: {$ref: '#/components/schemas/ChatConversationStatus'}
+        statusName: {type: string}
+        createdBy: {type: integer, format: int64}
+        creatorDisplayName: {type: string}
+        members:
+          type: array
+          items: {$ref: '#/components/schemas/ChatMemberVO'}
+        closedBy: {type: integer, format: int64, nullable: true}
+        closedByDisplayName: {type: string, nullable: true}
+        closeReason: {type: string, nullable: true}
+        closedAt: {type: string, format: date-time, nullable: true}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    ChatMessageVO:
+      type: object
+      properties:
+        messageId: {type: integer, format: int64}
+        conversationId: {type: integer, format: int64}
+        clientMessageId: {type: string}
+        senderId: {type: integer, format: int64, nullable: true}
+        senderDisplayName: {type: string}
+        senderRole: {$ref: '#/components/schemas/ChatMessageSenderRole'}
+        senderRoleName: {type: string}
+        messageType: {$ref: '#/components/schemas/ChatMessageType'}
+        messageTypeName: {type: string}
+        content: {type: string}
+        deleted: {type: boolean}
+        createdAt: {type: string, format: date-time}
+
+    ChatMessagePageVO:
+      type: object
+      required: [records, hasMore]
+      properties:
+        records:
+          type: array
+          items: {$ref: '#/components/schemas/ChatMessageVO'}
+        nextBeforeMessageId:
+          type: integer
+          format: int64
+          nullable: true
+        hasMore:
+          type: boolean
+
+    ChatReadReceiptVO:
+      type: object
+      properties:
+        conversationId: {type: integer, format: int64}
+        userId: {type: integer, format: int64}
+        lastReadMessageId: {type: integer, format: int64}
+        lastReadAt: {type: string, format: date-time}
+
+    ChatUnreadCountVO:
+      type: object
+      properties:
+        unreadMessageCount: {type: integer, format: int64}
+        unreadConversationCount: {type: integer, format: int64}
+
+    ChatWebSocketErrorVO:
+      type: object
+      description: 订阅 /user/queue/chat.errors 后收到的 WebSocket 业务错误
+      properties:
+        code: {type: string, example: BAD_REQUEST}
+        message: {type: string, example: 当前会话状态不允许发送消息}
+        occurredAt: {type: string, format: date-time}
+
+    ChatConversationPageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items: {$ref: '#/components/schemas/ChatConversationListVO'}
+        total: {type: integer, format: int64}
+        page: {type: integer, format: int64}
+        pageSize: {type: integer, format: int64}
+
+    ChatConversationSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatConversationVO'}
+        traceId: {type: string}
+
+    ChatConversationPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatConversationPageVO'}
+        traceId: {type: string}
+
+    ChatConversationDetailSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatConversationDetailVO'}
+        traceId: {type: string}
+
+    ChatMessagePageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatMessagePageVO'}
+        traceId: {type: string}
+
+    ChatReadReceiptSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatReadReceiptVO'}
+        traceId: {type: string}
+
+    ChatUnreadCountSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/ChatUnreadCountVO'}
+        traceId: {type: string}
 
     ValidationErrorResult:
       type: object
