@@ -15,6 +15,7 @@ import com.byy.meterreading.model.enums.DeviceAlarmType;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.service.DeviceAlarmService;
 import com.byy.meterreading.service.DeviceHeartbeatService;
+import com.byy.meterreading.service.BusinessNotificationService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.devicealarm.DeviceAlarmVO;
 import org.springframework.dao.DuplicateKeyException;
@@ -44,14 +45,19 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
     /** 根据 Redis 心跳 Key 判断设备当前是否在线。 */
     private final DeviceHeartbeatService deviceHeartbeatService;
 
+    /** 告警创建和恢复后生成管理员实时通知。 */
+    private final BusinessNotificationService businessNotificationService;
+
     public DeviceAlarmServiceImpl(
             DeviceMapper deviceMapper,
             DeviceAlarmMapper deviceAlarmMapper,
-            DeviceHeartbeatService deviceHeartbeatService
+            DeviceHeartbeatService deviceHeartbeatService,
+            BusinessNotificationService businessNotificationService
     ) {
         this.deviceMapper = deviceMapper;
         this.deviceAlarmMapper = deviceAlarmMapper;
         this.deviceHeartbeatService = deviceHeartbeatService;
+        this.businessNotificationService = businessNotificationService;
     }
 
     /**
@@ -136,14 +142,14 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
             if (online) {
                 // 设备恢复心跳且存在未恢复告警时，将该告警更新为 RECOVERED。
                 if (openAlarm != null) {
-                    recoverAlarm(openAlarm.getId(), detectedAt);
+                    recoverAlarm(device, openAlarm, detectedAt);
                 }
                 continue;
             }
 
             // 设备离线但已经存在 OPEN 告警时不重复插入。
             if (openAlarm == null) {
-                createOfflineAlarm(device.getId(), detectedAt);
+                createOfflineAlarm(device, detectedAt);
             }
         }
     }
@@ -174,11 +180,11 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
      * 多实例可能同时判断同一设备离线，最终由数据库唯一索引保证幂等。
      */
     private void createOfflineAlarm(
-            Long deviceId,
+            Device device,
             LocalDateTime occurredAt
     ) {
         DeviceAlarm alarm = DeviceAlarm.builder()
-                .deviceId(deviceId)
+                .deviceId(device.getId())
                 .alarmType(DeviceAlarmType.OFFLINE.name())
                 .alarmStatus(DeviceAlarmStatus.OPEN.name())
                 .occurredAt(occurredAt)
@@ -187,26 +193,38 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
             deviceAlarmMapper.insert(alarm);
         } catch (DuplicateKeyException ignored) {
             // 多实例并发扫描时，由数据库唯一索引保证只保留一条 OPEN 告警。
+            return;
         }
+        businessNotificationService.notifyDeviceOffline(
+                device,
+                alarm.getId()
+        );
     }
 
     /**
      * 恢复指定告警。更新条件包含 OPEN 状态，确保已经恢复的记录不会被重复修改。
      */
     private void recoverAlarm(
-            Long alarmId,
+            Device device,
+            DeviceAlarm alarm,
             LocalDateTime recoveredAt
     ) {
-        deviceAlarmMapper.update(
+        int updated = deviceAlarmMapper.update(
                 null,
                 Wrappers.<DeviceAlarm>lambdaUpdate()
                         .set(DeviceAlarm::getAlarmStatus,
                                 DeviceAlarmStatus.RECOVERED.name())
                         .set(DeviceAlarm::getRecoveredAt, recoveredAt)
-                        .eq(DeviceAlarm::getId, alarmId)
+                        .eq(DeviceAlarm::getId, alarm.getId())
                         .eq(DeviceAlarm::getAlarmStatus,
                                 DeviceAlarmStatus.OPEN.name())
         );
+        if (updated == 1) {
+            businessNotificationService.notifyDeviceRecovered(
+                    device,
+                    alarm.getId()
+            );
+        }
     }
 
     /**

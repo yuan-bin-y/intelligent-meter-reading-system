@@ -32,6 +32,7 @@ import com.byy.meterreading.model.enums.MeterReadingTaskStatus;
 import com.byy.meterreading.model.enums.MeterType;
 import com.byy.meterreading.model.enums.TaskExecutorType;
 import com.byy.meterreading.service.MeterReadingTaskExecutionService;
+import com.byy.meterreading.service.BusinessNotificationService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingSubmissionVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskDetailVO;
@@ -63,6 +64,7 @@ public class MeterReadingTaskExecutionServiceImpl
     private final MeterImageMapper meterImageMapper;
     private final MeterMapper meterMapper;
     private final OssProperties ossProperties;
+    private final BusinessNotificationService businessNotificationService;
 
     public MeterReadingTaskExecutionServiceImpl(
             MeterReadingTaskMapper meterReadingTaskMapper,
@@ -70,7 +72,8 @@ public class MeterReadingTaskExecutionServiceImpl
             MeterReadingResultImageMapper resultImageMapper,
             MeterImageMapper meterImageMapper,
             MeterMapper meterMapper,
-            OssProperties ossProperties
+            OssProperties ossProperties,
+            BusinessNotificationService businessNotificationService
     ) {
         this.meterReadingTaskMapper = meterReadingTaskMapper;
         this.meterReadingResultMapper = meterReadingResultMapper;
@@ -78,6 +81,7 @@ public class MeterReadingTaskExecutionServiceImpl
         this.meterImageMapper = meterImageMapper;
         this.meterMapper = meterMapper;
         this.ossProperties = ossProperties;
+        this.businessNotificationService = businessNotificationService;
     }
 
     /**
@@ -286,6 +290,14 @@ public class MeterReadingTaskExecutionServiceImpl
                 updateWrapper
         );
         ensureUpdated(updatedRows);
+        businessNotificationService.notifyTaskStatusChanged(
+                taskId,
+                executorType == TaskExecutorType.METER_READER
+                        ? executorId
+                        : null,
+                MeterReadingTaskStatus.PROCESSING.getDescription(),
+                expectedVersion + 1
+        );
         return new MeterReadingTaskVersionVO(
                 taskId,
                 MeterReadingTaskStatus.PROCESSING,
@@ -391,6 +403,15 @@ public class MeterReadingTaskExecutionServiceImpl
                 updateWrapper
         );
         ensureUpdated(updatedRows);
+
+        businessNotificationService.notifyTaskStatusChanged(
+                taskId,
+                executorType == TaskExecutorType.METER_READER
+                        ? executorId
+                        : null,
+                MeterReadingTaskStatus.PENDING_REVIEW.getDescription(),
+                expectedVersion + 1
+        );
 
         return new MeterReadingSubmissionVO(
                 result.getId(),

@@ -32,6 +32,7 @@ import com.byy.meterreading.model.enums.MeterStatus;
 import com.byy.meterreading.model.enums.MeterType;
 import com.byy.meterreading.model.enums.TaskExecutorType;
 import com.byy.meterreading.service.MeterReadingTaskService;
+import com.byy.meterreading.service.BusinessNotificationService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskDetailVO;
 import com.byy.meterreading.vo.meterreadingtask.MeterReadingTaskListItemVO;
@@ -70,6 +71,8 @@ public class MeterReadingTaskServiceImpl
     private final DeviceMapper deviceMapper;
     /** 校验设备是否已经绑定任务中的表具。 */
     private final DeviceMeterMapper deviceMeterMapper;
+    /** 在任务提交成功后为居民和抄表员生成通知。 */
+    private final BusinessNotificationService businessNotificationService;
 
     public MeterReadingTaskServiceImpl(
             MeterReadingTaskMapper meterReadingTaskMapper,
@@ -77,7 +80,8 @@ public class MeterReadingTaskServiceImpl
             SysUserMapper sysUserMapper,
             SysRoleMapper sysRoleMapper,
             DeviceMapper deviceMapper,
-            DeviceMeterMapper deviceMeterMapper
+            DeviceMeterMapper deviceMeterMapper,
+            BusinessNotificationService businessNotificationService
     ) {
         this.meterReadingTaskMapper = meterReadingTaskMapper;
         this.meterMapper = meterMapper;
@@ -85,6 +89,7 @@ public class MeterReadingTaskServiceImpl
         this.sysRoleMapper = sysRoleMapper;
         this.deviceMapper = deviceMapper;
         this.deviceMeterMapper = deviceMeterMapper;
+        this.businessNotificationService = businessNotificationService;
     }
 
     /**
@@ -139,6 +144,12 @@ public class MeterReadingTaskServiceImpl
                     exception
             );
         }
+
+        businessNotificationService.notifyTaskAssigned(
+                task.getId(),
+                operatorId,
+                task.getVersion()
+        );
 
         // 7. 使用关联查询返回表具及执行者名称，保证创建和详情结构一致。
         return toDetailVO(requireTaskDetail(task.getId()));
@@ -249,6 +260,11 @@ public class MeterReadingTaskServiceImpl
         ensureUpdated(updatedRows, taskId);
 
         // 6. 前端后续操作必须使用递增后的版本号。
+        businessNotificationService.notifyTaskAssigned(
+                taskId,
+                operatorId,
+                assignDTO.version() + 1
+        );
         return new MeterReadingTaskVersionVO(
                 taskId,
                 MeterReadingTaskStatus.PENDING,
@@ -305,6 +321,12 @@ public class MeterReadingTaskServiceImpl
                 updateWrapper
         );
         ensureUpdated(updatedRows, taskId);
+        businessNotificationService.notifyTaskStatusChanged(
+                taskId,
+                operatorId,
+                MeterReadingTaskStatus.CANCELLED.getDescription(),
+                cancelDTO.version() + 1
+        );
         return new MeterReadingTaskVersionVO(
                 taskId,
                 MeterReadingTaskStatus.CANCELLED,
@@ -363,6 +385,12 @@ public class MeterReadingTaskServiceImpl
                 updateWrapper
         );
         ensureUpdated(updatedRows, taskId);
+        businessNotificationService.notifyTaskStatusChanged(
+                taskId,
+                operatorId,
+                MeterReadingTaskStatus.PENDING.getDescription(),
+                versionDTO.version() + 1
+        );
         return new MeterReadingTaskVersionVO(
                 taskId,
                 MeterReadingTaskStatus.PENDING,

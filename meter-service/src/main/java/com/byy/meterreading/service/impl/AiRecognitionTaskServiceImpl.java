@@ -35,6 +35,7 @@ import com.byy.meterreading.model.enums.MeterReadingTaskStatus;
 import com.byy.meterreading.model.enums.MqOutboxStatus;
 import com.byy.meterreading.model.enums.TaskExecutorType;
 import com.byy.meterreading.service.AiRecognitionTaskService;
+import com.byy.meterreading.service.BusinessNotificationService;
 import com.byy.meterreading.vo.airecognition.AiRecognitionTaskActionVO;
 import com.byy.meterreading.vo.airecognition.AiRecognitionTaskDetailVO;
 import com.byy.meterreading.vo.airecognition.AiRecognitionTaskListVO;
@@ -72,6 +73,7 @@ public class AiRecognitionTaskServiceImpl
     private final MeterReadingResultMapper readingResultMapper;
     private final MeterReadingResultImageMapper resultImageMapper;
     private final ObjectMapper objectMapper;
+    private final BusinessNotificationService businessNotificationService;
 
     public AiRecognitionTaskServiceImpl(
             AiRecognitionTaskMapper recognitionTaskMapper,
@@ -80,7 +82,8 @@ public class AiRecognitionTaskServiceImpl
             MeterReadingTaskMapper readingTaskMapper,
             MeterReadingResultMapper readingResultMapper,
             MeterReadingResultImageMapper resultImageMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            BusinessNotificationService businessNotificationService
     ) {
         this.recognitionTaskMapper = recognitionTaskMapper;
         this.outboxEventMapper = outboxEventMapper;
@@ -89,6 +92,7 @@ public class AiRecognitionTaskServiceImpl
         this.readingResultMapper = readingResultMapper;
         this.resultImageMapper = resultImageMapper;
         this.objectMapper = objectMapper;
+        this.businessNotificationService = businessNotificationService;
     }
 
     /**
@@ -419,6 +423,14 @@ public class AiRecognitionTaskServiceImpl
         if (taskUpdated != 1) {
             throw new VersionConflictException("抄表任务已被其他操作修改");
         }
+        businessNotificationService.notifyAiRecognitionResult(
+                recognitionTask.getId(),
+                readingTask.getId(),
+                true,
+                "AI识别已完成，识别读数为"
+                        + completeDTO.recognizedValue()
+                        + "，等待审核"
+        );
     }
 
     /** AI 失败回调只接受当前最新事件，并同步结束对应抄表任务。 */
@@ -469,6 +481,12 @@ public class AiRecognitionTaskServiceImpl
                 recognitionTask.getReadingTaskId(),
                 "AI识别失败：" + failDTO.failureMessage(),
                 null
+        );
+        businessNotificationService.notifyAiRecognitionResult(
+                recognitionTask.getId(),
+                recognitionTask.getReadingTaskId(),
+                false,
+                "AI识别失败：" + failDTO.failureMessage()
         );
     }
 

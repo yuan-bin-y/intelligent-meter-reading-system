@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核、正式抄表记录及居民与抄表员实时沟通模块的 Apifox 测试文档。
-  version: 3.0.0
+  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核、正式抄表记录、实时沟通及实时通知模块的 Apifox 测试文档。
+  version: 3.1.0
 
 servers:
   - url: http://localhost:8070
@@ -41,6 +41,10 @@ tags:
     description: 居民、抄表员和管理员创建、查询、已读及关闭本人参与的聊天会话
   - name: 聊天管理
     description: 管理员认领、转交和统一查询客服会话
+  - name: 通知中心
+    description: 已登录用户查询通知、查看未读数量以及设置已读状态
+  - name: 实时通知
+    description: 使用 SSE 向当前登录用户实时推送业务通知
 
 x-websocket:
   endpoint: ws://localhost:8070/ws/chat
@@ -4633,6 +4637,152 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ChatConversationPageSuccessResult'}
 
+  /api/v1/notifications:
+    get:
+      tags: [通知中心]
+      summary: 分页查询我的通知
+      description: 只返回 JWT 当前用户自己的通知，默认按创建时间倒序排列。
+      operationId: listMyNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          description: 是否只查询未读通知
+          schema: {type: boolean, default: false}
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationPageSuccessResult'}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [通知中心]
+      summary: 查询我的未读通知数量
+      operationId: getMyNotificationUnreadCount
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationUnreadCountSuccessResult'}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/notifications/{notificationId}/read:
+    put:
+      tags: [通知中心]
+      summary: 将一条通知标记为已读
+      description: 只能操作属于 JWT 当前用户的通知，重复调用保持已读并返回当前通知。
+      operationId: markMyNotificationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          description: 通知 ID
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: 标记成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationSuccessResult'}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '404':
+          description: 通知不存在或不属于当前用户
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/notifications/read-all:
+    put:
+      tags: [通知中心]
+      summary: 将我的全部通知标记为已读
+      operationId: markAllMyNotificationsRead
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 操作成功，返回操作后的未读数量 0
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationUnreadCountSuccessResult'}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/realtime/notifications:
+    get:
+      tags: [实时通知]
+      summary: 订阅当前用户的 SSE 实时通知
+      description: >-
+        建立 text/event-stream 长连接。首次连接先返回 connected 事件，之后返回业务通知；
+        客户端重连时可携带 Last-Event-ID，服务端会从数据库补发该 ID 之后最多 100 条属于当前用户的通知。
+        浏览器原生 EventSource 不能设置 Authorization 请求头，前端可使用 fetch-event-source。
+      operationId: subscribeMyRealtimeNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: 上一次成功处理的通知 ID，用于断线补发
+          schema: {type: string, example: '1001'}
+      responses:
+        '200':
+          description: SSE 连接建立成功；业务事件的 event 字段为通知类型，id 为通知 ID，data 为 NotificationVO JSON
+          headers:
+            Cache-Control:
+              schema: {type: string, example: no-store}
+            X-Accel-Buffering:
+              schema: {type: string, example: 'no'}
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |-
+                event:connected
+                retry:3000
+                data:connected
+
+                id:1002
+                event:TASK_ASSIGNED
+                data:{"notificationId":1002,"notificationType":"TASK_ASSIGNED","title":"新的抄表任务","read":false}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -8150,6 +8300,109 @@ components:
         code: {type: string, enum: [OK]}
         message: {type: string, example: success}
         data: {$ref: '#/components/schemas/ChatUnreadCountVO'}
+        traceId: {type: string}
+
+    NotificationType:
+      type: string
+      description: 通知类型
+      enum:
+        - AI_RECOGNITION_SUCCEEDED
+        - AI_RECOGNITION_FAILED
+        - DEVICE_OFFLINE
+        - DEVICE_RECOVERED
+        - TASK_ASSIGNED
+        - TASK_STATUS_CHANGED
+        - REVIEW_APPROVED
+        - REVIEW_REJECTED
+        - CHAT_MESSAGE
+
+    NotificationResourceType:
+      type: string
+      description: 通知指向的业务资源类型
+      enum:
+        - AI_RECOGNITION_TASK
+        - DEVICE
+        - METER_READING_TASK
+        - METER_READING_RESULT
+        - CHAT_CONVERSATION
+
+    NotificationVO:
+      type: object
+      required:
+        - notificationId
+        - notificationType
+        - notificationTypeName
+        - resourceType
+        - resourceTypeName
+        - resourceId
+        - title
+        - content
+        - read
+        - createdAt
+      properties:
+        notificationId: {type: integer, format: int64, example: 1002}
+        notificationType: {$ref: '#/components/schemas/NotificationType'}
+        notificationTypeName: {type: string, example: 抄表任务已分配}
+        actorUserId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 触发该通知的用户 ID；系统事件时可以为空
+        actorDisplayName:
+          type: string
+          nullable: true
+          description: 触发该通知的用户显示名称；系统事件时可以为空
+        resourceType: {$ref: '#/components/schemas/NotificationResourceType'}
+        resourceTypeName: {type: string, example: 抄表任务}
+        resourceId: {type: integer, format: int64, example: 14}
+        title: {type: string, example: 新的抄表任务}
+        content: {type: string, example: 任务 RT202609210014 已分配给你}
+        read: {type: boolean, example: false}
+        readAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+
+    NotificationPageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items: {$ref: '#/components/schemas/NotificationVO'}
+        total: {type: integer, format: int64, example: 2}
+        page: {type: integer, format: int64, example: 1}
+        pageSize: {type: integer, format: int64, example: 20}
+
+    NotificationUnreadCountVO:
+      type: object
+      required: [unreadCount]
+      properties:
+        unreadCount: {type: integer, format: int64, minimum: 0, example: 2}
+
+    NotificationSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/NotificationVO'}
+        traceId: {type: string}
+
+    NotificationPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/NotificationPageVO'}
+        traceId: {type: string}
+
+    NotificationUnreadCountSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/NotificationUnreadCountVO'}
         traceId: {type: string}
 
     ValidationErrorResult:

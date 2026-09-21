@@ -19,6 +19,11 @@ spring:
       mandatory: true
 
 app:
+  realtime:
+    timeout: ${SSE_TIMEOUT:PT30M}
+    heartbeat-interval-ms: ${SSE_HEARTBEAT_INTERVAL_MS:25000}
+    replay-limit: ${SSE_REPLAY_LIMIT:100}
+    redis-channel: ${SSE_REDIS_CHANNEL:meter:realtime:notifications}
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   storage:

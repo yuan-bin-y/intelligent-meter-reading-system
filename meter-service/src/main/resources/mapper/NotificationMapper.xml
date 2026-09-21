@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.byy.meterreading.mapper.NotificationMapper">
+
+    <sql id="notificationViewColumns">
+        n.id AS notificationId,
+        n.recipient_user_id AS recipientUserId,
+        n.actor_user_id AS actorUserId,
+        COALESCE(actor.display_name, actor.username) AS actorDisplayName,
+        n.notification_type AS notificationType,
+        n.resource_type AS resourceType,
+        n.resource_id AS resourceId,
+        n.title,
+        n.content,
+        n.is_read AS isRead,
+        n.read_at AS readAt,
+        n.created_at AS createdAt
+    </sql>
+
+    <select id="selectNotificationPage"
+            resultType="com.byy.meterreading.mapper.projection.NotificationRow">
+        SELECT <include refid="notificationViewColumns"/>
+        FROM notification n
+        LEFT JOIN sys_user actor ON actor.id = n.actor_user_id
+        WHERE n.recipient_user_id = #{recipientUserId}
+        <if test="unreadOnly">
+            AND n.is_read = 0
+        </if>
+        ORDER BY n.id DESC
+    </select>
+
+    <select id="selectViewForRecipient"
+            resultType="com.byy.meterreading.mapper.projection.NotificationRow">
+        SELECT <include refid="notificationViewColumns"/>
+        FROM notification n
+        LEFT JOIN sys_user actor ON actor.id = n.actor_user_id
+        WHERE n.id = #{notificationId}
+          AND n.recipient_user_id = #{recipientUserId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByDedupKey"
+            resultType="com.byy.meterreading.model.Notification">
+        SELECT
+            id, recipient_user_id, actor_user_id, notification_type,
+            resource_type, resource_id, title, content, dedup_key,
+            is_read, read_at, created_at
+        FROM notification
+        WHERE dedup_key = #{dedupKey}
+        LIMIT 1
+    </select>
+
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*)
+        FROM notification
+        WHERE recipient_user_id = #{recipientUserId}
+          AND is_read = 0
+    </select>
+
+    <update id="markRead">
+        UPDATE notification
+        SET is_read = 1,
+            read_at = NOW()
+        WHERE id = #{notificationId}
+          AND recipient_user_id = #{recipientUserId}
+          AND is_read = 0
+    </update>
+
+    <update id="markAllRead">
+        UPDATE notification
+        SET is_read = 1,
+            read_at = NOW()
+        WHERE recipient_user_id = #{recipientUserId}
+          AND is_read = 0
+    </update>
+
+    <select id="selectAfterId"
+            resultType="com.byy.meterreading.mapper.projection.NotificationRow">
+        SELECT <include refid="notificationViewColumns"/>
+        FROM notification n
+        LEFT JOIN sys_user actor ON actor.id = n.actor_user_id
+        WHERE n.recipient_user_id = #{recipientUserId}
+          AND n.id &gt; #{lastEventId}
+        ORDER BY n.id
+        LIMIT #{limit}
+    </select>
+
+</mapper>

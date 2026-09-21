@@ -29,6 +29,7 @@ import com.byy.meterreading.model.enums.MeterReadingReviewStatus;
 import com.byy.meterreading.model.enums.MeterReadingTaskStatus;
 import com.byy.meterreading.model.enums.TaskExecutorType;
 import com.byy.meterreading.service.MeterReadingReviewService;
+import com.byy.meterreading.service.BusinessNotificationService;
 import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterimage.MeterImageItemVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultDetailVO;
@@ -53,19 +54,22 @@ public class MeterReadingReviewServiceImpl
     private final MeterReadingReviewMapper reviewMapper;
     private final MeterReadingRecordMapper recordMapper;
     private final MeterImageMapper imageMapper;
+    private final BusinessNotificationService businessNotificationService;
 
     public MeterReadingReviewServiceImpl(
             MeterReadingResultMapper resultMapper,
             MeterReadingTaskMapper taskMapper,
             MeterReadingReviewMapper reviewMapper,
             MeterReadingRecordMapper recordMapper,
-            MeterImageMapper imageMapper
+            MeterImageMapper imageMapper,
+            BusinessNotificationService businessNotificationService
     ) {
         this.resultMapper = resultMapper;
         this.taskMapper = taskMapper;
         this.reviewMapper = reviewMapper;
         this.recordMapper = recordMapper;
         this.imageMapper = imageMapper;
+        this.businessNotificationService = businessNotificationService;
     }
 
     @Override
@@ -290,6 +294,16 @@ public class MeterReadingReviewServiceImpl
         if (taskMapper.update(null, taskUpdate) != 1) {
             throw new VersionConflictException("抄表任务已被其他操作修改");
         }
+
+        businessNotificationService.notifyReviewDecision(
+                resultId,
+                task.getId(),
+                reviewerId,
+                targetStatus == MeterReadingReviewStatus.APPROVED,
+                targetStatus == MeterReadingReviewStatus.APPROVED
+                        ? "审核已通过，确认读数为" + confirmedReadingValue
+                        : "审核已驳回：" + reason
+        );
 
         return new MeterReadingReviewDecisionVO(
                 resultId,

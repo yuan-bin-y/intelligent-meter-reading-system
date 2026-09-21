@@ -22,6 +22,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -241,6 +242,17 @@ public class GlobalExceptionHandler {
                 ApiErrorCode.UPSTREAM_ERROR,
                 exception.getMessage()
         );
+    }
+
+    /**
+     * SSE 客户端关闭页面、刷新页面或网络中断后，Servlet 容器会用该异常通知服务端。
+     * 此时响应通常已经提交，不能再由统一异常处理器写入 JSON 错误体，只需结束本次异步请求。
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsableException(
+            AsyncRequestNotUsableException exception
+    ) {
+        log.debug("SSE 客户端连接已断开：{}", exception.getMessage());
     }
 
     /**
