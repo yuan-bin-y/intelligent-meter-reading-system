@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: meter-ai-simulator
+  main:
+    web-application-type: none
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VIRTUAL_HOST:/}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        concurrency: 1
+        max-concurrency: 1
+        default-requeue-rejected: false
+
+app:
+  ai-simulator:
+    backend-base-url: ${METER_BACKEND_BASE_URL:http://127.0.0.1:8070}
+    service-id: ${AI_SERVICE_ID:meter-ai-service}
+    secret-base64: ${AI_SERVICE_SECRET_BASE64}
+    model-name: ${AI_SIMULATOR_MODEL_NAME:meter-reading-simulator}
+    model-version: ${AI_SIMULATOR_MODEL_VERSION:1.0.0}
+    mode: ${AI_SIMULATOR_MODE:SUCCESS}
+    recognized-value: ${AI_SIMULATOR_RECOGNIZED_VALUE:123.456}
+    confidence: ${AI_SIMULATOR_CONFIDENCE:0.9876}
+    processing-delay: ${AI_SIMULATOR_PROCESSING_DELAY:PT1S}
+    callback-timeout: ${AI_SIMULATOR_CALLBACK_TIMEOUT:PT10S}
+    publisher-confirm-timeout: ${AI_SIMULATOR_PUBLISHER_CONFIRM_TIMEOUT:PT5S}
+    max-consume-attempts: ${AI_SIMULATOR_MAX_CONSUME_ATTEMPTS:3}
+    failure-code: ${AI_SIMULATOR_FAILURE_CODE:IMAGE_UNREADABLE}
+    failure-message: ${AI_SIMULATOR_FAILURE_MESSAGE:模拟图片无法识别}

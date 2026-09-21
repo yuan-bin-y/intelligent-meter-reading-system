@@ -22,6 +22,7 @@ import com.byy.meterreading.model.enums.MeterImageStorageStatus;
 import com.byy.meterreading.model.enums.MeterImageType;
 import com.byy.meterreading.model.enums.MeterReadingTaskStatus;
 import com.byy.meterreading.model.enums.TaskExecutorType;
+import com.byy.meterreading.service.AiRecognitionTaskService;
 import com.byy.meterreading.service.MeterImageService;
 import com.byy.meterreading.service.MeterImageUploadCommand;
 import com.byy.meterreading.service.ObjectStorageService;
@@ -55,6 +56,7 @@ public class MeterImageServiceImpl implements MeterImageService {
     private final MeterReadingTaskMapper taskMapper;
     private final ResidentMeterMapper residentMeterMapper;
     private final ObjectStorageService objectStorageService;
+    private final AiRecognitionTaskService aiRecognitionTaskService;
     private final MeterImageFileInspector fileInspector;
     private final OssProperties properties;
 
@@ -63,6 +65,7 @@ public class MeterImageServiceImpl implements MeterImageService {
             MeterReadingTaskMapper taskMapper,
             ResidentMeterMapper residentMeterMapper,
             ObjectStorageService objectStorageService,
+            AiRecognitionTaskService aiRecognitionTaskService,
             MeterImageFileInspector fileInspector,
             OssProperties properties
     ) {
@@ -70,6 +73,7 @@ public class MeterImageServiceImpl implements MeterImageService {
         this.taskMapper = taskMapper;
         this.residentMeterMapper = residentMeterMapper;
         this.objectStorageService = objectStorageService;
+        this.aiRecognitionTaskService = aiRecognitionTaskService;
         this.fileInspector = fileInspector;
         this.properties = properties;
     }
@@ -148,6 +152,7 @@ public class MeterImageServiceImpl implements MeterImageService {
     }
 
     @Override
+    @Transactional
     public MeterImageItemVO uploadDeviceImage(
             Long deviceId,
             Long taskId,
@@ -390,7 +395,6 @@ public class MeterImageServiceImpl implements MeterImageService {
             requireOwnedProcessingTask(uploaderType, uploaderId, taskId);
             requireImageCapacity(taskId, uploaderType, uploaderId);
             meterImageMapper.insert(image);
-            return toItemVO(requireImageDetail(image.getId()));
         } catch (DuplicateKeyException exception) {
             compensateUploadedObject(stored);
             MeterImage concurrent = findByUploadRequest(
@@ -408,6 +412,21 @@ public class MeterImageServiceImpl implements MeterImageService {
             }
             throw new ResourceConflictException("图片上传请求发生冲突", exception);
         } catch (RuntimeException exception) {
+            compensateUploadedObject(stored);
+            throw exception;
+        }
+
+        try {
+            if (uploaderType == TaskExecutorType.DEVICE) {
+                /*
+                 * 设备图片、AI识别任务和Outbox事件加入同一个数据库事务。
+                 * 后续RabbitMQ发布失败不会回滚业务数据，而是由Outbox定时重试。
+                 */
+                aiRecognitionTaskService.createAutomaticTask(image.getId());
+            }
+            return toItemVO(requireImageDetail(image.getId()));
+        } catch (RuntimeException exception) {
+            // 数据库事务将回滚；OSS不参与事务，因此在这里主动删除已上传对象。
             compensateUploadedObject(stored);
             throw exception;
         }

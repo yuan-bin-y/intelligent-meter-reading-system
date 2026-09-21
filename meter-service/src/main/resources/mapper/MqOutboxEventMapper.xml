@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.MqOutboxEventMapper">
+
+    <select id="selectLatestByAggregate"
+            resultType="com.byy.meterreading.model.MqOutboxEvent">
+        SELECT *
+        FROM mq_outbox_event
+        WHERE aggregate_type = #{aggregateType}
+          AND aggregate_id = #{aggregateId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="failUnsentByAggregate">
+        UPDATE mq_outbox_event
+        SET status = 'FAILED',
+            next_retry_at = NULL,
+            locked_by = NULL,
+            locked_at = NULL,
+            last_error = #{lastError},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE aggregate_type = #{aggregateType}
+          AND aggregate_id = #{aggregateId}
+          AND status IN ('PENDING', 'SENDING')
+          AND sent_at IS NULL
+    </update>
+
+    <select id="selectPublishableEvents"
+            resultType="com.byy.meterreading.model.MqOutboxEvent">
+        SELECT *
+        FROM mq_outbox_event
+        WHERE status = 'PENDING'
+          AND retry_count &lt; max_retry_count
+          AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now})
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="claimEvent">
+        UPDATE mq_outbox_event
+        SET status = 'SENDING',
+            locked_by = #{lockedBy},
+            locked_at = #{lockedAt},
+            version = version + 1,
+            updated_at = #{lockedAt}
+        WHERE id = #{eventId}
+          AND status = 'PENDING'
+          AND retry_count &lt; max_retry_count
+          AND version = #{expectedVersion}
+          AND (next_retry_at IS NULL OR next_retry_at &lt;= #{lockedAt})
+    </update>
+
+    <update id="markSent">
+        UPDATE mq_outbox_event
+        SET status = 'SENT',
+            next_retry_at = NULL,
+            locked_by = NULL,
+            locked_at = NULL,
+            sent_at = #{sentAt},
+            last_error = NULL,
+            version = version + 1,
+            updated_at = #{sentAt}
+        WHERE id = #{eventId}
+          AND status = 'SENDING'
+          AND version = #{expectedVersion}
+    </update>
+
+    <update id="markRetry">
+        UPDATE mq_outbox_event
+        SET status = 'PENDING',
+            retry_count = #{retryCount},
+            next_retry_at = #{nextRetryAt},
+            locked_by = NULL,
+            locked_at = NULL,
+            sent_at = NULL,
+            last_error = #{lastError},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = #{eventId}
+          AND status = 'SENDING'
+          AND version = #{expectedVersion}
+          AND #{retryCount} &lt;= max_retry_count
+    </update>
+
+    <update id="markFailed">
+        UPDATE mq_outbox_event
+        SET status = 'FAILED',
+            retry_count = #{retryCount},
+            next_retry_at = NULL,
+            locked_by = NULL,
+            locked_at = NULL,
+            sent_at = NULL,
+            last_error = #{lastError},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = #{eventId}
+          AND status = 'SENDING'
+          AND version = #{expectedVersion}
+          AND #{retryCount} &lt;= max_retry_count
+    </update>
+
+    <update id="resetExpiredSendingEvents">
+        UPDATE mq_outbox_event
+        SET status = 'PENDING',
+            next_retry_at = #{nextRetryAt},
+            locked_by = NULL,
+            locked_at = NULL,
+            last_error = #{lastError},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE status = 'SENDING'
+          AND locked_at IS NOT NULL
+          AND locked_at &lt; #{lockExpiredBefore}
+          AND retry_count &lt; max_retry_count
+    </update>
+
+</mapper>

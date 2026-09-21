@@ -52,4 +52,7 @@ public interface MeterReadingTaskMapper
     MeterReadingTaskDetailRow selectTaskDetail(
             @Param("taskId") Long taskId
     );
+
+    /** 跨表状态流转事务中锁定任务，防止结果和任务状态并发错位。 */
+    MeterReadingTask selectByIdForUpdate(@Param("taskId") Long taskId);
 }

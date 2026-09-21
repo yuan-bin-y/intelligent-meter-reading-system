@@ -1,5 +1,8 @@
 package com.byy.meterreading.auth.config;
 
+import com.byy.meterreading.auth.ai.AiServiceAuthenticationFilter;
+import com.byy.meterreading.auth.ai.AiServiceAuthenticationProvider;
+import com.byy.meterreading.auth.ai.AiServiceProperties;
 import com.byy.meterreading.auth.device.DeviceAuthenticationFilter;
 import com.byy.meterreading.auth.device.DeviceAuthenticationProvider;
 import com.byy.meterreading.auth.security.CustomUserDetailsService;
@@ -29,7 +32,10 @@ import static org.springframework.http.HttpMethod.POST;
  */
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties(AuthProtectionProperties.class)
+@EnableConfigurationProperties({
+        AuthProtectionProperties.class,
+        AiServiceProperties.class
+})
 public class SecurityConfig {
 
     /**
@@ -56,18 +62,20 @@ public class SecurityConfig {
     }
 
     /**
-     * 创建统一认证管理器，同时注册用户密码认证器和设备密钥认证器。
-     * 用户登录和设备接口过滤器都会调用该对象的 authenticate 方法，
+     * 创建统一认证管理器，注册用户、设备和 AI 服务三种认证器。
+     * 登录流程及两个专用认证过滤器都会调用该对象的 authenticate 方法，
      * 认证管理器会按照认证 Token 类型选择对应的 Provider。
      */
     @Bean
     public AuthenticationManager authenticationManager(
             DaoAuthenticationProvider daoAuthenticationProvider,
-            DeviceAuthenticationProvider deviceAuthenticationProvider
+            DeviceAuthenticationProvider deviceAuthenticationProvider,
+            AiServiceAuthenticationProvider aiServiceAuthenticationProvider
     ) {
         return new ProviderManager(
                 daoAuthenticationProvider,
-                deviceAuthenticationProvider
+                deviceAuthenticationProvider,
+                aiServiceAuthenticationProvider
         );
     }
 
@@ -98,7 +106,9 @@ public class SecurityConfig {
             HttpSecurity http,
             DaoAuthenticationProvider daoAuthenticationProvider,
             DeviceAuthenticationProvider deviceAuthenticationProvider,
+            AiServiceAuthenticationProvider aiServiceAuthenticationProvider,
             DeviceAuthenticationFilter deviceAuthenticationFilter,
+            AiServiceAuthenticationFilter aiServiceAuthenticationFilter,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             AuthenticationEntryPoint authenticationEntryPoint,
             AccessDeniedHandler accessDeniedHandler
@@ -117,7 +127,10 @@ public class SecurityConfig {
                 // 注册设备密钥认证器，供设备接口认证过滤器使用
                 .authenticationProvider(deviceAuthenticationProvider)
 
-                // 登录、注册和刷新接口允许匿名访问；设备接口只允许认证设备访问
+                // 注册AI服务签名认证器，供内部识别回调过滤器使用
+                .authenticationProvider(aiServiceAuthenticationProvider)
+
+                // 登录、注册和刷新允许匿名访问；设备和AI接口使用各自身份
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 POST,
@@ -127,11 +140,19 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers("/api/v1/device/**")
                         .hasRole("DEVICE")
+                        .requestMatchers("/api/v1/internal/ai/**")
+                        .hasRole("AI_SERVICE")
                         .anyRequest().authenticated())
 
                 // 设备使用请求头密钥认证，应当在 Bearer JWT 过滤器之前完成
                 .addFilterBefore(
                         deviceAuthenticationFilter,
+                        BearerTokenAuthenticationFilter.class
+                )
+
+                // AI服务使用带时间戳和随机数的HMAC签名认证
+                .addFilterBefore(
+                        aiServiceAuthenticationFilter,
                         BearerTokenAuthenticationFilter.class
                 )
 

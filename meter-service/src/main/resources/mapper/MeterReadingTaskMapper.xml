@@ -119,4 +119,12 @@
         LIMIT 1
     </select>
 
+    <select id="selectByIdForUpdate"
+            resultType="com.byy.meterreading.model.MeterReadingTask">
+        SELECT *
+        FROM meter_reading_task
+        WHERE id = #{taskId}
+        FOR UPDATE
+    </select>
+
 </mapper>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.byy.meterreading.mapper.AiRecognitionTaskMapper">
+
+    <select id="selectAdminPage"
+            resultType="com.byy.meterreading.mapper.projection.AiRecognitionTaskListRow">
+        SELECT recognition.id AS recognition_task_id,
+               recognition.recognition_no,
+               task.id AS reading_task_id,
+               task.task_no AS reading_task_no,
+               recognition.image_id,
+               meter.id AS meter_id,
+               meter.meter_no,
+               meter.meter_name,
+               recognition.attempt_no,
+               recognition.status,
+               recognition.recognized_value,
+               recognition.confidence,
+               recognition.model_name,
+               recognition.model_version,
+               recognition.retry_count,
+               recognition.max_retry_count,
+               recognition.version,
+               recognition.started_at,
+               recognition.completed_at,
+               recognition.created_at
+        FROM ai_recognition_task AS recognition
+        INNER JOIN meter_reading_task AS task
+                ON task.id = recognition.reading_task_id
+        INNER JOIN meter
+                ON meter.id = recognition.meter_id
+        WHERE 1 = 1
+        <if test="recognitionNo != null">
+            AND recognition.recognition_no LIKE CONCAT('%', #{recognitionNo}, '%')
+        </if>
+        <if test="readingTaskNo != null">
+            AND task.task_no LIKE CONCAT('%', #{readingTaskNo}, '%')
+        </if>
+        <if test="meterNo != null">
+            AND meter.meter_no LIKE CONCAT('%', #{meterNo}, '%')
+        </if>
+        <if test="status != null">
+            AND recognition.status = #{status}
+        </if>
+        <if test="modelName != null">
+            AND recognition.model_name LIKE CONCAT('%', #{modelName}, '%')
+        </if>
+        <if test="createdAtStart != null">
+            AND recognition.created_at &gt;= #{createdAtStart}
+        </if>
+        <if test="createdAtEnd != null">
+            AND recognition.created_at &lt;= #{createdAtEnd}
+        </if>
+        ORDER BY recognition.created_at DESC, recognition.id DESC
+    </select>
+
+    <select id="selectAdminDetail"
+            resultType="com.byy.meterreading.mapper.projection.AiRecognitionTaskDetailRow">
+        SELECT recognition.id AS recognition_task_id,
+               recognition.recognition_no,
+               task.id AS reading_task_id,
+               task.task_no AS reading_task_no,
+               task.task_status AS reading_task_status,
+               image.id AS image_id,
+               image.original_name AS image_original_name,
+               image.image_type,
+               image.image_status,
+               image.storage_status AS image_storage_status,
+               meter.id AS meter_id,
+               meter.meter_no,
+               meter.meter_name,
+               meter.meter_type,
+               meter.unit,
+               recognition.attempt_no,
+               recognition.status,
+               recognition.result_id,
+               recognition.recognized_value,
+               recognition.confidence,
+               recognition.model_name,
+               recognition.model_version,
+               recognition.raw_result,
+               recognition.failure_code,
+               recognition.failure_message,
+               recognition.retry_count,
+               recognition.max_retry_count,
+               recognition.started_at,
+               recognition.completed_at,
+               recognition.processing_duration_ms,
+               recognition.cancel_reason,
+               recognition.cancelled_by,
+               canceller.display_name AS cancelled_by_name,
+               recognition.cancelled_at,
+               recognition.version,
+               recognition.created_at,
+               recognition.updated_at,
+               outbox.event_id AS latest_event_id,
+               outbox.status AS latest_outbox_status,
+               outbox.retry_count AS latest_outbox_retry_count,
+               outbox.max_retry_count AS latest_outbox_max_retry_count,
+               outbox.next_retry_at AS latest_outbox_next_retry_at,
+               outbox.sent_at AS latest_outbox_sent_at,
+               outbox.last_error AS latest_outbox_last_error
+        FROM ai_recognition_task AS recognition
+        INNER JOIN meter_reading_task AS task
+                ON task.id = recognition.reading_task_id
+        INNER JOIN meter_image AS image
+                ON image.id = recognition.image_id
+        INNER JOIN meter
+                ON meter.id = recognition.meter_id
+        LEFT JOIN sys_user AS canceller
+               ON canceller.id = recognition.cancelled_by
+        LEFT JOIN mq_outbox_event AS outbox
+               ON outbox.id = (
+                   SELECT MAX(latest.id)
+                   FROM mq_outbox_event AS latest
+                   WHERE latest.aggregate_type = 'AI_RECOGNITION_TASK'
+                     AND latest.aggregate_id = recognition.id
+               )
+        WHERE recognition.id = #{recognitionTaskId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByIdForUpdate"
+            resultType="com.byy.meterreading.model.AiRecognitionTask">
+        SELECT *
+        FROM ai_recognition_task
+        WHERE id = #{recognitionTaskId}
+        FOR UPDATE
+    </select>
+
+    <select id="selectNextAttemptNo" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(attempt_no), 0) + 1
+        FROM ai_recognition_task
+        WHERE image_id = #{imageId}
+    </select>
+
+</mapper>

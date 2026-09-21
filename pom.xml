@@ -33,6 +33,7 @@
         <module>meter-service</module>
         <module>meter-auth</module>
         <module>meter-api</module>
+        <module>meter-ai-simulator</module>
     </modules>
 
     <properties>

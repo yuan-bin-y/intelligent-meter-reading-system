@@ -7,6 +7,16 @@ spring:
     multipart:
       max-file-size: ${OSS_MAX_FILE_SIZE:10MB}
       max-request-size: ${OSS_MAX_REQUEST_SIZE:11MB}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VIRTUAL_HOST:/}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 
 app:
   storage:
@@ -31,6 +41,12 @@ app:
       access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT2H}
       refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
       secret-base64: ${JWT_SECRET_BASE64}
+    ai-service:
+      service-id: ${AI_SERVICE_ID:meter-ai-service}
+      secret-base64: ${AI_SERVICE_SECRET_BASE64}
+      allowed-clock-skew: ${AI_SERVICE_ALLOWED_CLOCK_SKEW:PT5M}
+      nonce-ttl: ${AI_SERVICE_NONCE_TTL:PT10M}
+      max-body-size: ${AI_SERVICE_MAX_BODY_SIZE:65536}
     auth-protection:
       login-per-minute: ${AUTH_LOGIN_PER_MINUTE:10}
       register-per-hour: ${AUTH_REGISTER_PER_HOUR:5}
