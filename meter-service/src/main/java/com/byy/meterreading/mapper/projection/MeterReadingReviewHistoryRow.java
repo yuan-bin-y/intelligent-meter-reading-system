@@ -2,6 +2,7 @@ package com.byy.meterreading.mapper.projection;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /** 一个任务历次提交结果的审核历史投影。 */
@@ -13,6 +14,8 @@ public class MeterReadingReviewHistoryRow {
     private String reviewAction;
     private Long reviewerId;
     private String reviewerName;
+    private BigDecimal submittedReadingValue;
+    private BigDecimal confirmedReadingValue;
     private String reviewReason;
     private LocalDateTime reviewedAt;
 }

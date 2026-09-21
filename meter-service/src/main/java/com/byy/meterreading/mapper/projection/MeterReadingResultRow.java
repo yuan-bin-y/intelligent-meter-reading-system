@@ -18,6 +18,7 @@ public class MeterReadingResultRow {
     private String meterType;
     private String unit;
     private BigDecimal readingValue;
+    private BigDecimal confirmedReadingValue;
     private String sourceType;
     private Long executorId;
     private String executorCode;

@@ -38,6 +38,9 @@ public class MeterReadingResult {
 
     private BigDecimal readingValue;
 
+    /** 审核员确认后的最终读数；待审核和驳回结果为空。 */
+    private BigDecimal confirmedReadingValue;
+
     /** 设备识别结果必填，人工提交时为空。 */
     private BigDecimal recognitionConfidence;
     private String remark;

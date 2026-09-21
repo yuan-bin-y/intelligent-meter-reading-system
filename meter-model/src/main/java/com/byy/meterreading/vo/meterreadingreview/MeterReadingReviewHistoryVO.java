@@ -2,6 +2,7 @@ package com.byy.meterreading.vo.meterreadingreview;
 
 import com.byy.meterreading.model.enums.MeterReadingReviewStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /** 一次提交结果的审核历史。 */
@@ -13,6 +14,8 @@ public record MeterReadingReviewHistoryVO(
         String reviewActionName,
         Long reviewerId,
         String reviewerName,
+        BigDecimal submittedReadingValue,
+        BigDecimal confirmedReadingValue,
         String reviewReason,
         LocalDateTime reviewedAt
 ) {

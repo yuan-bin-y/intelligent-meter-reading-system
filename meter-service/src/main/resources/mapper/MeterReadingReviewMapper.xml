@@ -4,23 +4,41 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.byy.meterreading.mapper.MeterReadingReviewMapper">
 
-    <select id="selectTaskReviewHistory"
-            resultType="com.byy.meterreading.mapper.projection.MeterReadingReviewHistoryRow">
-        SELECT review.id AS review_id,
-               review.result_id,
-               result.attempt_no,
-               review.review_action,
-               review.reviewer_id,
-               reviewer.display_name AS reviewer_name,
-               review.review_reason,
-               review.reviewed_at
+    <sql id="reviewHistoryColumns">
+        review.id AS review_id,
+        review.result_id,
+        result.attempt_no,
+        review.review_action,
+        review.reviewer_id,
+        reviewer.display_name AS reviewer_name,
+        review.submitted_reading_value,
+        review.confirmed_reading_value,
+        review.review_reason,
+        review.reviewed_at
+    </sql>
+
+    <sql id="reviewHistoryJoins">
         FROM meter_reading_review AS review
         INNER JOIN meter_reading_result AS result
                 ON result.id = review.result_id
         INNER JOIN sys_user AS reviewer
                 ON reviewer.id = review.reviewer_id
+    </sql>
+
+    <select id="selectTaskReviewHistory"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingReviewHistoryRow">
+        SELECT <include refid="reviewHistoryColumns"/>
+        <include refid="reviewHistoryJoins"/>
         WHERE review.task_id = #{taskId}
         ORDER BY result.attempt_no ASC, review.id ASC
+    </select>
+
+    <select id="selectResultReviewHistory"
+            resultType="com.byy.meterreading.mapper.projection.MeterReadingReviewHistoryRow">
+        SELECT <include refid="reviewHistoryColumns"/>
+        <include refid="reviewHistoryJoins"/>
+        WHERE review.result_id = #{resultId}
+        ORDER BY review.id ASC
     </select>
 
 </mapper>

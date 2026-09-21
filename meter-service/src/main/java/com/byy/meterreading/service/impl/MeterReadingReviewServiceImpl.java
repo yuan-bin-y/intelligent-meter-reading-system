@@ -39,6 +39,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -97,6 +98,16 @@ public class MeterReadingReviewServiceImpl
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<MeterReadingReviewHistoryVO> listReviewHistory(Long resultId) {
+        requireResultRow(resultId);
+        return reviewMapper.selectResultReviewHistory(resultId)
+                .stream()
+                .map(this::toHistoryVO)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public MeterReadingReviewDecisionVO approve(
             Long reviewerId,
@@ -109,6 +120,7 @@ public class MeterReadingReviewServiceImpl
                 approveDTO.resultVersion(),
                 approveDTO.taskVersion(),
                 MeterReadingReviewStatus.APPROVED,
+                approveDTO.confirmedReadingValue(),
                 approveDTO.remark()
         );
     }
@@ -126,6 +138,7 @@ public class MeterReadingReviewServiceImpl
                 rejectDTO.resultVersion(),
                 rejectDTO.taskVersion(),
                 MeterReadingReviewStatus.REJECTED,
+                null,
                 rejectDTO.reason()
         );
     }
@@ -158,6 +171,7 @@ public class MeterReadingReviewServiceImpl
             Integer resultVersion,
             Integer taskVersion,
             MeterReadingReviewStatus targetStatus,
+            BigDecimal confirmedReadingValue,
             String reason
     ) {
         requirePositiveId(reviewerId, "审核人ID不合法");
@@ -172,6 +186,12 @@ public class MeterReadingReviewServiceImpl
         if (!currentStatus.canTransitionTo(targetStatus)) {
             throw new IllegalArgumentException("该结果已经完成审核");
         }
+        validateConfirmedReading(
+                result.getReadingValue(),
+                confirmedReadingValue,
+                targetStatus,
+                reason
+        );
 
         MeterReadingTask task = taskMapper.selectById(result.getTaskId());
         if (task == null) {
@@ -197,6 +217,8 @@ public class MeterReadingReviewServiceImpl
                 Wrappers.<MeterReadingResult>lambdaUpdate()
                         .set(MeterReadingResult::getReviewStatus,
                                 targetStatus.name())
+                        .set(MeterReadingResult::getConfirmedReadingValue,
+                                confirmedReadingValue)
                         .setSql("version = version + 1")
                         .eq(MeterReadingResult::getId, resultId)
                         .eq(MeterReadingResult::getReviewStatus,
@@ -213,6 +235,8 @@ public class MeterReadingReviewServiceImpl
                     .taskId(task.getId())
                     .reviewAction(targetStatus.name())
                     .reviewerId(reviewerId)
+                    .submittedReadingValue(result.getReadingValue())
+                    .confirmedReadingValue(confirmedReadingValue)
                     .reviewReason(reason)
                     .reviewedAt(reviewedAt)
                     .build());
@@ -227,7 +251,7 @@ public class MeterReadingReviewServiceImpl
                     .resultId(resultId)
                     .taskId(task.getId())
                     .meterId(result.getMeterId())
-                    .readingValue(result.getReadingValue())
+                    .readingValue(confirmedReadingValue)
                     .readingAt(result.getSubmittedAt())
                     .sourceType(result.getSourceType())
                     .executorId(executorId(result))
@@ -270,6 +294,8 @@ public class MeterReadingReviewServiceImpl
         return new MeterReadingReviewDecisionVO(
                 resultId,
                 targetStatus,
+                result.getReadingValue(),
+                confirmedReadingValue,
                 resultVersion + 1,
                 task.getId(),
                 targetTaskStatus,
@@ -295,7 +321,8 @@ public class MeterReadingReviewServiceImpl
                 row.getResultId(), row.getTaskId(), row.getTaskNo(),
                 row.getAttemptNo(), row.getMeterId(), row.getMeterNo(),
                 row.getMeterName(), row.getMeterType(), row.getUnit(),
-                row.getReadingValue(), source, source.getDescription(),
+                row.getReadingValue(), row.getConfirmedReadingValue(),
+                source, source.getDescription(),
                 row.getExecutorId(), row.getExecutorCode(),
                 row.getExecutorName(), row.getRecognitionConfidence(),
                 row.getRemark(), reviewStatus, reviewStatus.getDescription(),
@@ -314,7 +341,8 @@ public class MeterReadingReviewServiceImpl
         return new MeterReadingResultListItemVO(
                 row.getResultId(), row.getTaskId(), row.getTaskNo(),
                 row.getAttemptNo(), row.getMeterId(), row.getMeterNo(),
-                row.getMeterName(), row.getReadingValue(), source,
+                row.getMeterName(), row.getReadingValue(),
+                row.getConfirmedReadingValue(), source,
                 source.getDescription(), row.getExecutorId(),
                 row.getExecutorName(), reviewStatus,
                 reviewStatus.getDescription(), taskStatus,
@@ -331,7 +359,9 @@ public class MeterReadingReviewServiceImpl
         return new MeterReadingReviewHistoryVO(
                 row.getReviewId(), row.getResultId(), row.getAttemptNo(),
                 action, action.getDescription(), row.getReviewerId(),
-                row.getReviewerName(), row.getReviewReason(), row.getReviewedAt()
+                row.getReviewerName(), row.getSubmittedReadingValue(),
+                row.getConfirmedReadingValue(), row.getReviewReason(),
+                row.getReviewedAt()
         );
     }
 
@@ -367,6 +397,32 @@ public class MeterReadingReviewServiceImpl
     private Long executorId(MeterReadingResult result) {
         return TaskExecutorType.METER_READER.name().equals(result.getSourceType())
                 ? result.getMeterReaderId() : result.getDeviceId();
+    }
+
+    /**
+     * 通过时必须明确确认最终读数；修改原始读数时必须说明原因。
+     * 驳回不会产生正式读数，因此确认值必须为空。
+     */
+    private void validateConfirmedReading(
+            BigDecimal submittedReadingValue,
+            BigDecimal confirmedReadingValue,
+            MeterReadingReviewStatus targetStatus,
+            String reason
+    ) {
+        if (targetStatus == MeterReadingReviewStatus.REJECTED) {
+            if (confirmedReadingValue != null) {
+                throw new IllegalArgumentException("审核驳回不能填写最终确认读数");
+            }
+            return;
+        }
+        if (confirmedReadingValue == null
+                || confirmedReadingValue.signum() < 0) {
+            throw new IllegalArgumentException("最终确认读数不能为空且不能小于0");
+        }
+        if (submittedReadingValue.compareTo(confirmedReadingValue) != 0
+                && (reason == null || reason.isBlank())) {
+            throw new IllegalArgumentException("修正原始读数时必须填写审核说明");
+        }
     }
 
     private void requireVersion(Integer expected, Integer actual, String name) {

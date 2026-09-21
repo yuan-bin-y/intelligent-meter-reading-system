@@ -16,4 +16,9 @@ public interface MeterReadingReviewMapper
     List<MeterReadingReviewHistoryRow> selectTaskReviewHistory(
             @Param("taskId") Long taskId
     );
+
+    /** 查询指定提交结果自身的审核记录。 */
+    List<MeterReadingReviewHistoryRow> selectResultReviewHistory(
+            @Param("resultId") Long resultId
+    );
 }

@@ -9,6 +9,7 @@ import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultDetailVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultListItemVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingReviewDecisionVO;
+import com.byy.meterreading.vo.meterreadingreview.MeterReadingReviewHistoryVO;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /** 管理员和审核员共用的抄表结果审核接口。 */
 @RestController
@@ -48,6 +51,14 @@ public class MeterReadingReviewController {
             @PathVariable Long resultId
     ) {
         return Result.success(reviewService.getResult(resultId));
+    }
+
+    /** 查询指定提交结果本身的审核记录。 */
+    @GetMapping("/{resultId}/history")
+    public Result<List<MeterReadingReviewHistoryVO>> listReviewHistory(
+            @PathVariable Long resultId
+    ) {
+        return Result.success(reviewService.listReviewHistory(resultId));
     }
 
     /** 审核通过会生成正式记录并将任务推进为 COMPLETED。 */

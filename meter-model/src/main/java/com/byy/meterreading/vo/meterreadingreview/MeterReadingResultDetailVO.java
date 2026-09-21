@@ -21,6 +21,7 @@ public record MeterReadingResultDetailVO(
         String meterType,
         String unit,
         BigDecimal readingValue,
+        BigDecimal confirmedReadingValue,
         TaskExecutorType sourceType,
         String sourceTypeName,
         Long executorId,

@@ -7,6 +7,9 @@ import com.byy.meterreading.vo.common.PageVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultDetailVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingResultListItemVO;
 import com.byy.meterreading.vo.meterreadingreview.MeterReadingReviewDecisionVO;
+import com.byy.meterreading.vo.meterreadingreview.MeterReadingReviewHistoryVO;
+
+import java.util.List;
 
 /** 抄表结果查询、审核和抄表员查看本人结果。 */
 public interface MeterReadingReviewService {
@@ -15,6 +18,8 @@ public interface MeterReadingReviewService {
     );
 
     MeterReadingResultDetailVO getResult(Long resultId);
+
+    List<MeterReadingReviewHistoryVO> listReviewHistory(Long resultId);
 
     MeterReadingReviewDecisionVO approve(
             Long reviewerId,

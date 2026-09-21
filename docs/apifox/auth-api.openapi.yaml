@@ -4117,7 +4117,7 @@ paths:
     put:
       tags: [抄表结果审核]
       summary: 审核通过抄表结果
-      description: 在同一事务中更新结果、写审核历史、生成正式记录并将任务改为 COMPLETED。
+      description: 在同一事务中保存最终确认读数、写审核历史、生成正式记录并将任务改为 COMPLETED；修改原始读数时必须填写审核说明。
       operationId: approveMeterReadingResult
       security:
         - bearerAuth: []
@@ -4131,7 +4131,7 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/ApproveMeterReadingResultDTO'}
-            example: {resultVersion: 0, taskVersion: 2, remark: 读数和图片一致}
+            example: {resultVersion: 0, taskVersion: 2, confirmedReadingValue: 124.000, remark: 人工核对图片后修正读数}
       responses:
         '200':
           description: 审核通过
@@ -4145,6 +4145,31 @@ paths:
               schema: {$ref: '#/components/schemas/ErrorResult'}
         '409':
           description: 结果或任务版本冲突，或正式记录已经存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/review/meter-reading-results/{resultId}/history:
+    get:
+      tags: [抄表结果审核]
+      summary: 查询指定抄表结果的审核历史
+      description: 返回该次提交的审核动作、原始读数快照、最终确认读数、审核人和审核说明。
+      operationId: listMeterReadingResultReviewHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeterReadingReviewHistoryListSuccessResult'}
+        '404':
+          description: 抄表结果不存在
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResult'}
@@ -5810,10 +5835,14 @@ components:
 
     ApproveMeterReadingResultDTO:
       type: object
-      required: [resultVersion, taskVersion]
+      required: [resultVersion, taskVersion, confirmedReadingValue]
       properties:
         resultVersion: {type: integer, minimum: 0}
         taskVersion: {type: integer, minimum: 0}
+        confirmedReadingValue:
+          type: number
+          minimum: 0
+          description: 审核确认后的最终读数
         remark: {type: string, maxLength: 500, nullable: true}
 
     RejectMeterReadingResultDTO:
@@ -5835,6 +5864,10 @@ components:
         meterNo: {type: string}
         meterName: {type: string}
         readingValue: {type: number}
+        confirmedReadingValue:
+          type: number
+          nullable: true
+          description: 审核通过后的最终确认读数
         sourceType: {$ref: '#/components/schemas/TaskExecutorType'}
         sourceTypeName: {type: string}
         executorId: {type: integer, format: int64}
@@ -5857,6 +5890,8 @@ components:
         reviewActionName: {type: string}
         reviewerId: {type: integer, format: int64}
         reviewerName: {type: string}
+        submittedReadingValue: {type: number}
+        confirmedReadingValue: {type: number, nullable: true}
         reviewReason: {type: string, nullable: true}
         reviewedAt: {type: string, format: date-time}
 
@@ -5882,6 +5917,8 @@ components:
       properties:
         resultId: {type: integer, format: int64}
         reviewStatus: {$ref: '#/components/schemas/MeterReadingReviewStatus'}
+        submittedReadingValue: {type: number}
+        confirmedReadingValue: {type: number, nullable: true}
         resultVersion: {type: integer}
         taskId: {type: integer, format: int64}
         taskStatus: {$ref: '#/components/schemas/MeterReadingTaskStatus'}
@@ -5952,6 +5989,16 @@ components:
         code: {type: string, enum: [OK]}
         message: {type: string, example: success}
         data: {$ref: '#/components/schemas/MeterReadingReviewDecisionVO'}
+        traceId: {type: string}
+
+    MeterReadingReviewHistoryListSuccessResult:
+      type: object
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/MeterReadingReviewHistoryVO'}
         traceId: {type: string}
 
     MeterReadingRecordPageSuccessResult:
