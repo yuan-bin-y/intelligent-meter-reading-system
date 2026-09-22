@@ -18,6 +18,18 @@ spring:
     template:
       mandatory: true
 
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.byy.meterreading: ${LOG_LEVEL_APP:INFO}
+  file:
+    path: ${LOG_PATH:logs}
+  logback:
+    rollingpolicy:
+      max-file-size: ${LOG_MAX_FILE_SIZE:100MB}
+      max-history: ${LOG_MAX_HISTORY:30}
+      total-size-cap: ${LOG_TOTAL_SIZE_CAP:5GB}
+
 app:
   realtime:
     timeout: ${SSE_TIMEOUT:PT30M}

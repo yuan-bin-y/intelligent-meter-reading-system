@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: 智能抄表系统后端接口
-  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核、正式抄表记录、实时沟通及实时通知模块的 Apifox 测试文档。
-  version: 3.1.0
+  description: 当前认证、用户、表具、设备、告警、任务、OSS 图片、抄表结果审核、正式抄表记录、实时沟通、实时通知及操作审计模块的 Apifox 测试文档。
+  version: 3.2.0
 
 servers:
   - url: http://localhost:8070
@@ -45,6 +45,8 @@ tags:
     description: 已登录用户查询通知、查看未读数量以及设置已读状态
   - name: 实时通知
     description: 使用 SSE 向当前登录用户实时推送业务通知
+  - name: 操作审计
+    description: 管理员分页查询后台写操作的成功、失败结果及完整请求上下文
 
 x-websocket:
   endpoint: ws://localhost:8070/ws/chat
@@ -4783,6 +4785,191 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResult'}
 
+  /api/v1/admin/operation-logs:
+    get:
+      tags: [操作审计]
+      summary: 分页查询操作审计日志
+      description: >-
+        仅 ADMIN 可以访问。支持按 traceId、操作人用户名、业务模块、执行结果和创建时间范围组合筛选，
+        默认按创建时间和日志 ID 倒序排列。当前 module 包括：用户管理、设备管理、表具管理、
+        居民表具绑定、设备表具绑定、抄表任务、抄表图片、AI识别任务、抄表结果审核、客服会话。
+      operationId: listOperationLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 页码，从 1 开始
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          required: false
+          description: 每页数量，最大 100
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: traceId
+          in: query
+          required: false
+          description: 精确匹配一次请求的追踪标识
+          schema: {type: string, maxLength: 64, example: a50f799f171b470f9bf6d5298c5c351f}
+        - name: operatorUsername
+          in: query
+          required: false
+          description: 操作人用户名，支持模糊匹配
+          schema: {type: string, maxLength: 64, example: admin}
+        - name: module
+          in: query
+          required: false
+          description: 业务模块，支持模糊匹配
+          schema: {type: string, maxLength: 64, example: 表具管理}
+        - name: result
+          in: query
+          required: false
+          description: 操作执行结果
+          schema: {$ref: '#/components/schemas/OperationResult'}
+        - name: createdAtStart
+          in: query
+          required: false
+          description: 创建时间范围起点，使用本地日期时间格式
+          schema: {type: string, format: date-time, example: '2026-09-22T00:00:00'}
+        - name: createdAtEnd
+          in: query
+          required: false
+          description: 创建时间范围终点，使用本地日期时间格式
+          schema: {type: string, format: date-time, example: '2026-09-22T23:59:59'}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OperationLogPageSuccessResult'}
+              example:
+                code: OK
+                message: success
+                data:
+                  records:
+                    - logId: 7
+                      traceId: a50f799f171b470f9bf6d5298c5c351f
+                      operatorId: 2101995776620654593
+                      operatorUsername: admin
+                      module: 表具管理
+                      action: 新增表具
+                      resourceType: METER
+                      resourceId: 13
+                      result: SUCCESS
+                      resultName: 操作成功
+                      durationMs: 44
+                      createdAt: '2026-09-22T15:56:13'
+                  total: 1
+                  page: 1
+                  pageSize: 20
+                traceId: 01JEXAMPLETRACEID
+        '400':
+          description: 页码、每页数量或时间参数不合法
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationErrorResult'}
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+
+  /api/v1/admin/operation-logs/{logId}:
+    get:
+      tags: [操作审计]
+      summary: 查询操作审计日志详情
+      description: 仅 ADMIN 可以访问。返回请求路径、客户端 IP、脱敏后的请求参数、执行耗时和失败原因。
+      operationId: getOperationLog
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: logId
+          in: path
+          required: true
+          description: 操作审计日志 ID
+          schema: {type: integer, format: int64, minimum: 1, example: 9}
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OperationLogDetailSuccessResult'}
+              examples:
+                successLog:
+                  summary: 操作成功记录
+                  value:
+                    code: OK
+                    message: success
+                    data:
+                      logId: 7
+                      traceId: a50f799f171b470f9bf6d5298c5c351f
+                      operatorId: 2101995776620654593
+                      operatorUsername: admin
+                      module: 表具管理
+                      action: 新增表具
+                      resourceType: METER
+                      resourceId: 13
+                      requestMethod: POST
+                      requestPath: /api/v1/admin/meters
+                      clientIp: 127.0.0.1
+                      requestParams: '{"createMeterDTO":{"meterNo":"METER-001","meterName":"一号水表"}}'
+                      result: SUCCESS
+                      resultName: 操作成功
+                      errorMessage: null
+                      durationMs: 44
+                      createdAt: '2026-09-22T15:56:13'
+                    traceId: 01JEXAMPLETRACEID
+                failedLog:
+                  summary: 操作失败记录
+                  value:
+                    code: OK
+                    message: success
+                    data:
+                      logId: 9
+                      traceId: 82e9b285043842889104b9467ff7a218
+                      operatorId: 2101995776620654593
+                      operatorUsername: admin
+                      module: 表具管理
+                      action: 修改表具
+                      resourceType: METER
+                      resourceId: 13
+                      requestMethod: PUT
+                      requestPath: /api/v1/admin/meters/13
+                      clientIp: 127.0.0.1
+                      requestParams: '{"meterId":13,"updateMeterDTO":{"version":0}}'
+                      result: FAILED
+                      resultName: 操作失败
+                      errorMessage: 表具信息已被其他用户修改，请刷新后重试
+                      durationMs: 1
+                      createdAt: '2026-09-22T15:56:13'
+                    traceId: 01JEXAMPLETRACEID
+        '401':
+          description: 未登录或 Access Token 已失效
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '403':
+          description: 当前用户没有 ADMIN 角色
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+        '404':
+          description: 操作审计日志不存在
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResult'}
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: 操作日志不存在
+                data: null
+                traceId: 01JEXAMPLETRACEID
+
 components:
   securitySchemes:
     bearerAuth:
@@ -8404,6 +8591,93 @@ components:
         message: {type: string, example: success}
         data: {$ref: '#/components/schemas/NotificationUnreadCountVO'}
         traceId: {type: string}
+
+    OperationResult:
+      type: string
+      description: 操作执行结果；SUCCESS 表示业务正常完成，FAILED 表示业务方法抛出异常
+      enum: [SUCCESS, FAILED]
+
+    OperationLogListVO:
+      type: object
+      required:
+        - logId
+        - traceId
+        - operatorId
+        - operatorUsername
+        - module
+        - action
+        - resourceType
+        - result
+        - resultName
+        - durationMs
+        - createdAt
+      properties:
+        logId: {type: integer, format: int64, example: 7}
+        traceId: {type: string, example: a50f799f171b470f9bf6d5298c5c351f}
+        operatorId: {type: integer, format: int64, example: 2101995776620654593}
+        operatorUsername: {type: string, example: admin}
+        module: {type: string, example: 表具管理}
+        action: {type: string, example: 新增表具}
+        resourceType: {type: string, example: METER}
+        resourceId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 被操作资源的 ID；无法确定具体资源时为空
+          example: 13
+        result: {$ref: '#/components/schemas/OperationResult'}
+        resultName: {type: string, example: 操作成功}
+        durationMs: {type: integer, format: int64, minimum: 0, example: 44}
+        createdAt: {type: string, format: date-time, example: '2026-09-22T15:56:13'}
+
+    OperationLogDetailVO:
+      allOf:
+        - $ref: '#/components/schemas/OperationLogListVO'
+        - type: object
+          required: [requestMethod, requestPath, clientIp]
+          properties:
+            requestMethod: {type: string, example: PUT}
+            requestPath: {type: string, example: /api/v1/admin/meters/13}
+            clientIp: {type: string, example: 127.0.0.1}
+            requestParams:
+              type: string
+              nullable: true
+              description: 已脱敏并截断后的 JSON 参数；敏感操作配置不记录参数时为空
+              example: '{"meterId":13,"updateMeterDTO":{"version":0}}'
+            errorMessage:
+              type: string
+              nullable: true
+              description: FAILED 时记录可安全对外展示的错误信息，SUCCESS 时为空
+              example: 表具信息已被其他用户修改，请刷新后重试
+
+    OperationLogPageVO:
+      type: object
+      required: [records, total, page, pageSize]
+      properties:
+        records:
+          type: array
+          items: {$ref: '#/components/schemas/OperationLogListVO'}
+        total: {type: integer, format: int64, minimum: 0, example: 33}
+        page: {type: integer, format: int64, minimum: 1, example: 1}
+        pageSize: {type: integer, format: int64, minimum: 1, maximum: 100, example: 20}
+
+    OperationLogPageSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/OperationLogPageVO'}
+        traceId: {type: string, example: 01JEXAMPLETRACEID}
+
+    OperationLogDetailSuccessResult:
+      type: object
+      required: [code, message, data, traceId]
+      properties:
+        code: {type: string, enum: [OK]}
+        message: {type: string, example: success}
+        data: {$ref: '#/components/schemas/OperationLogDetailVO'}
+        traceId: {type: string, example: 01JEXAMPLETRACEID}
 
     ValidationErrorResult:
       type: object
