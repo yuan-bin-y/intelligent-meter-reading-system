@@ -7,7 +7,7 @@ import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
 import com.byy.meterreading.common.result.ApiErrorCode;
 import com.byy.meterreading.common.result.Result;
-import com.byy.meterreading.common.trace.TraceIdContext;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -26,6 +26,7 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,8 +46,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationCredentialsNotFoundException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public Result<Void> handleAuthenticationCredentialsNotFoundException(
-            AuthenticationCredentialsNotFoundException exception
+            AuthenticationCredentialsNotFoundException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.UNAUTHORIZED, exception);
         return Result.failure(
                 ApiErrorCode.AUTH_REQUIRED,
                 ApiErrorCode.AUTH_REQUIRED.getMessage()
@@ -59,8 +62,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public Result<Void> handleAuthenticationException(
-            AuthenticationException exception
+            AuthenticationException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.UNAUTHORIZED, exception);
         return Result.failure(
                 ApiErrorCode.AUTH_FAILED,
                 ApiErrorCode.AUTH_FAILED.getMessage()
@@ -73,8 +78,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RateLimitExceededException.class)
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
     public Result<Void> handleRateLimitExceededException(
-            RateLimitExceededException exception
+            RateLimitExceededException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.TOO_MANY_REQUESTS, exception);
         return Result.failure(
                 ApiErrorCode.RATE_LIMITED,
                 exception.getMessage()
@@ -87,8 +94,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthorizationDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public Result<Void> handleAuthorizationDeniedException(
-            AuthorizationDeniedException exception
+            AuthorizationDeniedException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.FORBIDDEN, exception);
         return Result.failure(
                 ApiErrorCode.FORBIDDEN,
                 ApiErrorCode.FORBIDDEN.getMessage()
@@ -101,11 +110,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Result<Void> handleResourceNotFoundException(
-            ResourceNotFoundException exception
+            ResourceNotFoundException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.NOT_FOUND, exception);
         return Result.failure(
                 ApiErrorCode.RESOURCE_NOT_FOUND,
                 exception.getMessage()
+        );
+    }
+
+    /** 请求的接口或静态资源不存在时返回 404，避免被兜底处理器误判为 500。 */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleNoResourceFoundException(
+            NoResourceFoundException exception,
+            HttpServletRequest request
+    ) {
+        logClientException(request, HttpStatus.NOT_FOUND, exception);
+        return Result.failure(
+                ApiErrorCode.RESOURCE_NOT_FOUND,
+                "接口不存在"
         );
     }
 
@@ -115,7 +140,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Map<String, String>> handleMethodArgumentNotValidException(
-            MethodArgumentNotValidException exception
+            MethodArgumentNotValidException exception,
+            HttpServletRequest request
     ) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         exception.getBindingResult().getFieldErrors().forEach(error ->
@@ -127,6 +153,13 @@ public class GlobalExceptionHandler {
                 )
         );
 
+        log.info(
+                "请求参数校验失败：method={}, path={}, status={}, fields={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                HttpStatus.BAD_REQUEST.value(),
+                fieldErrors.keySet()
+        );
         return Result.validation(fieldErrors);
     }
 
@@ -136,8 +169,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> handleHttpMessageNotReadableException(
-            HttpMessageNotReadableException exception
+            HttpMessageNotReadableException exception,
+            HttpServletRequest request
     ) {
+        logClientException(request, HttpStatus.BAD_REQUEST, exception);
         return Result.failure(
                 ApiErrorCode.BAD_REQUEST,
                 "请求体格式不正确"
@@ -154,7 +189,11 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class
     })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<Void> handleRequestParameterException(Exception exception) {
+    public Result<Void> handleRequestParameterException(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        logClientException(request, HttpStatus.BAD_REQUEST, exception);
         return Result.failure(
                 ApiErrorCode.BAD_REQUEST,
                 "请求参数不正确"
@@ -165,8 +204,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
     public Result<Void> handleMaxUploadSizeExceededException(
-            MaxUploadSizeExceededException exception
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request
     ) {
+        logClientException(request, HttpStatus.PAYLOAD_TOO_LARGE, exception);
         return Result.failure(
                 ApiErrorCode.PAYLOAD_TOO_LARGE,
                 ApiErrorCode.PAYLOAD_TOO_LARGE.getMessage()
@@ -180,8 +221,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> handleIllegalArgumentException(
-            IllegalArgumentException exception
+            IllegalArgumentException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.BAD_REQUEST, exception);
         return Result.failure(
                 ApiErrorCode.BAD_REQUEST,
                 exception.getMessage()
@@ -194,8 +237,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Result<Void> handleResourceConflictException(
-            ResourceConflictException exception
+            ResourceConflictException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.CONFLICT, exception);
         return Result.failure(
                 ApiErrorCode.RESOURCE_CONFLICT,
                 exception.getMessage()
@@ -208,8 +253,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(VersionConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Result<Void> handleVersionConflictException(
-            VersionConflictException exception
+            VersionConflictException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.CONFLICT, exception);
         return Result.failure(
                 ApiErrorCode.VERSION_CONFLICT,
                 exception.getMessage()
@@ -222,8 +269,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateKeyException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Result<Void> handleDuplicateKeyException(
-            DuplicateKeyException exception
+            DuplicateKeyException exception,
+            HttpServletRequest request
     ) {
+        logBusinessException(request, HttpStatus.CONFLICT, exception);
         return Result.failure(
                 ApiErrorCode.RESOURCE_CONFLICT,
                 ApiErrorCode.RESOURCE_CONFLICT.getMessage()
@@ -234,10 +283,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ObjectStorageException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Result<Void> handleObjectStorageException(
-            ObjectStorageException exception
+            ObjectStorageException exception,
+            HttpServletRequest request
     ) {
-        String traceId = TraceIdContext.getOrCreate();
-        log.error("OSS 调用失败，traceId={}", traceId, exception);
+        logSystemException(request, HttpStatus.BAD_GATEWAY, exception);
         return Result.failure(
                 ApiErrorCode.UPSTREAM_ERROR,
                 exception.getMessage()
@@ -250,9 +299,15 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public void handleAsyncRequestNotUsableException(
-            AsyncRequestNotUsableException exception
+            AsyncRequestNotUsableException exception,
+            HttpServletRequest request
     ) {
-        log.debug("SSE 客户端连接已断开：{}", exception.getMessage());
+        log.debug(
+                "SSE客户端连接已断开：method={}, path={}, exception={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName()
+        );
     }
 
     /**
@@ -260,13 +315,78 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<Void> handleException(Exception exception) {
-        String traceId = TraceIdContext.getOrCreate();
-        log.error("服务器内部错误，traceId={}", traceId, exception);
+    public Result<Void> handleException(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        logSystemException(
+                request,
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                exception
+        );
 
         return Result.failure(
                 ApiErrorCode.INTERNAL_ERROR,
                 ApiErrorCode.INTERNAL_ERROR.getMessage()
         );
+    }
+
+    /**
+     * 记录由客户端请求格式引起的异常，不输出请求体和异常信息，避免密码等敏感内容进入日志。
+     */
+    private void logClientException(
+            HttpServletRequest request,
+            HttpStatus status,
+            Exception exception
+    ) {
+        log.info(
+                "客户端请求异常：method={}, path={}, status={}, exception={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                status.value(),
+                exception.getClass().getSimpleName()
+        );
+    }
+
+    /** 记录可预期的认证、权限和业务规则异常，不打印完整堆栈。 */
+    private void logBusinessException(
+            HttpServletRequest request,
+            HttpStatus status,
+            Exception exception
+    ) {
+        log.warn(
+                "业务异常：method={}, path={}, status={}, exception={}, message={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                status.value(),
+                exception.getClass().getSimpleName(),
+                safeMessage(exception)
+        );
+    }
+
+    /** 记录基础设施或未知系统异常，并保留完整堆栈用于定位故障。 */
+    private void logSystemException(
+            HttpServletRequest request,
+            HttpStatus status,
+            Exception exception
+    ) {
+        log.error(
+                "系统异常：method={}, path={}, status={}, exception={}, message={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                status.value(),
+                exception.getClass().getSimpleName(),
+                safeMessage(exception),
+                exception
+        );
+    }
+
+    /** 清理异常信息中的换行符，避免异常内容破坏单行日志结构。 */
+    private String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return "-";
+        }
+        return message.replace('\r', ' ').replace('\n', ' ');
     }
 }

@@ -30,6 +30,27 @@ logging:
       max-history: ${LOG_MAX_HISTORY:30}
       total-size-cap: ${LOG_TOTAL_SIZE_CAP:5GB}
 
+# 只开放健康检查和 Prometheus 指标端点，其余 Actuator 端点不对外暴露。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      # 对外只返回整体 UP/DOWN，避免泄露数据库、Redis 等连接信息。
+      show-details: never
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      # 所有指标附加统一应用名，Prometheus 多服务查询时可以直接筛选。
+      application: ${spring.application.name}
+
 app:
   realtime:
     timeout: ${SSE_TIMEOUT:PT30M}

@@ -25,6 +25,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
+import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
 
 /**
@@ -137,6 +138,14 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/refresh"
+                        ).permitAll()
+                        // 健康检查供容器探针使用，Prometheus 指标供监控服务抓取。
+                        // Actuator 配置只暴露这两个端点，且健康详情不会对外展示。
+                        .requestMatchers(
+                                GET,
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                "/actuator/prometheus"
                         ).permitAll()
                         // HTTP 层只允许完成 WebSocket 握手，后续 STOMP CONNECT
                         // 必须由 WebSocket JWT 拦截器重新完成身份认证。

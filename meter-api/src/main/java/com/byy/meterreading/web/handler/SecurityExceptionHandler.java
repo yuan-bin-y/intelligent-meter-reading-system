@@ -5,6 +5,8 @@ import com.byy.meterreading.common.result.Result;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -24,6 +26,10 @@ import java.nio.charset.StandardCharsets;
 public class SecurityExceptionHandler implements
         AuthenticationEntryPoint, AccessDeniedHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(
+            SecurityExceptionHandler.class
+    );
+
     private final ObjectMapper objectMapper;
 
     public SecurityExceptionHandler(ObjectMapper objectMapper) {
@@ -39,6 +45,11 @@ public class SecurityExceptionHandler implements
             HttpServletResponse response,
             AuthenticationException exception
     ) throws IOException, ServletException {
+        logSecurityException(
+                request,
+                HttpStatus.UNAUTHORIZED,
+                exception
+        );
         writeResponse(
                 response,
                 HttpStatus.UNAUTHORIZED,
@@ -55,6 +66,11 @@ public class SecurityExceptionHandler implements
             HttpServletResponse response,
             AccessDeniedException exception
     ) throws IOException, ServletException {
+        logSecurityException(
+                request,
+                HttpStatus.FORBIDDEN,
+                exception
+        );
         writeResponse(
                 response,
                 HttpStatus.FORBIDDEN,
@@ -77,6 +93,23 @@ public class SecurityExceptionHandler implements
         objectMapper.writeValue(
                 response.getOutputStream(),
                 Result.failure(errorCode, errorCode.getMessage())
+        );
+    }
+
+    /**
+     * Security 过滤器异常不会进入 ControllerAdvice，因此在安全边界统一记录。
+     */
+    private void logSecurityException(
+            HttpServletRequest request,
+            HttpStatus status,
+            Exception exception
+    ) {
+        log.warn(
+                "安全访问异常：method={}, path={}, status={}, exception={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                status.value(),
+                exception.getClass().getSimpleName()
         );
     }
 }
