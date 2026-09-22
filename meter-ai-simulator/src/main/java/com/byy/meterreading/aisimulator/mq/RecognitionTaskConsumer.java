@@ -4,6 +4,7 @@ import com.byy.meterreading.aisimulator.callback.AiCallbackClient;
 import com.byy.meterreading.aisimulator.config.AiSimulatorProperties;
 import com.byy.meterreading.aisimulator.recognition.RecognitionEngine;
 import com.byy.meterreading.aisimulator.recognition.RecognitionOutcome;
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,47 +64,53 @@ public class RecognitionTaskConsumer {
             Message originalMessage,
             Channel channel
     ) throws IOException {
-        long deliveryTag = originalMessage.getMessageProperties()
-                .getDeliveryTag();
-        int currentAttempt = currentAttempt(originalMessage);
-        long startedNanos = System.nanoTime();
+        Object traceIdHeader = originalMessage.getMessageProperties()
+                .getHeaders().get(TraceIdContext.MESSAGE_HEADER);
+        try (TraceIdContext.Scope ignored = TraceIdContext.open(
+                traceIdHeader == null ? null : traceIdHeader.toString()
+        )) {
+            long deliveryTag = originalMessage.getMessageProperties()
+                    .getDeliveryTag();
+            int currentAttempt = currentAttempt(originalMessage);
+            long startedNanos = System.nanoTime();
 
-        try {
-            validateTask(task);
-            callbackClient.start(task);
-            RecognitionOutcome outcome = recognitionEngine.recognize(task);
-            long durationMs = elapsedMillis(startedNanos);
+            try {
+                validateTask(task);
+                callbackClient.start(task);
+                RecognitionOutcome outcome = recognitionEngine.recognize(task);
+                long durationMs = elapsedMillis(startedNanos);
 
-            if (outcome instanceof RecognitionOutcome.Success success) {
-                callbackClient.complete(task, success, durationMs);
-                log.info(
-                        "模拟AI识别成功并完成回调：eventId={}, taskId={}, value={}",
-                        task.eventId(),
-                        task.recognitionTaskId(),
-                        success.recognizedValue()
+                if (outcome instanceof RecognitionOutcome.Success success) {
+                    callbackClient.complete(task, success, durationMs);
+                    log.info(
+                            "模拟AI识别成功并完成回调：eventId={}, taskId={}, value={}",
+                            task.eventId(),
+                            task.recognitionTaskId(),
+                            success.recognizedValue()
+                    );
+                } else if (outcome instanceof RecognitionOutcome.Failure failure) {
+                    callbackClient.fail(task, failure, durationMs);
+                    log.info(
+                            "模拟AI识别失败并完成回调：eventId={}, taskId={}, code={}",
+                            task.eventId(),
+                            task.recognitionTaskId(),
+                            failure.failureCode()
+                    );
+                } else {
+                    throw new IllegalStateException("识别引擎返回了未知结果");
+                }
+
+                channel.basicAck(deliveryTag, false);
+            } catch (Exception exception) {
+                handleProcessingFailure(
+                        task,
+                        originalMessage,
+                        channel,
+                        deliveryTag,
+                        currentAttempt,
+                        exception
                 );
-            } else if (outcome instanceof RecognitionOutcome.Failure failure) {
-                callbackClient.fail(task, failure, durationMs);
-                log.info(
-                        "模拟AI识别失败并完成回调：eventId={}, taskId={}, code={}",
-                        task.eventId(),
-                        task.recognitionTaskId(),
-                        failure.failureCode()
-                );
-            } else {
-                throw new IllegalStateException("识别引擎返回了未知结果");
             }
-
-            channel.basicAck(deliveryTag, false);
-        } catch (Exception exception) {
-            handleProcessingFailure(
-                    task,
-                    originalMessage,
-                    channel,
-                    deliveryTag,
-                    currentAttempt,
-                    exception
-            );
         }
     }
 
@@ -177,6 +184,14 @@ public class RecognitionTaskConsumer {
                 "x-final-error",
                 abbreviate(cause.getMessage())
         );
+        Object traceIdHeader = originalMessage.getMessageProperties()
+                .getHeaders().get(TraceIdContext.MESSAGE_HEADER);
+        if (traceIdHeader != null) {
+            deadProperties.setHeader(
+                    TraceIdContext.MESSAGE_HEADER,
+                    traceIdHeader.toString()
+            );
+        }
 
         Message deadMessage = new Message(
                 originalMessage.getBody(),

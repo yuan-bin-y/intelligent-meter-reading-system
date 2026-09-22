@@ -3,6 +3,7 @@ package com.byy.meterreading.aisimulator.callback;
 import com.byy.meterreading.aisimulator.config.AiSimulatorProperties;
 import com.byy.meterreading.aisimulator.mq.RecognitionTaskMessage;
 import com.byy.meterreading.aisimulator.recognition.RecognitionOutcome;
+import com.byy.meterreading.common.trace.TraceIdContext;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -129,6 +130,10 @@ public class AiCallbackClient {
                 .header("X-AI-Timestamp", timestamp)
                 .header("X-AI-Nonce", nonce)
                 .header("X-AI-Signature", signature)
+                .header(
+                        TraceIdContext.HTTP_HEADER,
+                        TraceIdContext.getOrCreate()
+                )
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
 

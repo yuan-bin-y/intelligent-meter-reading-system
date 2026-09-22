@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.dto.airecognition.AiRecognitionTaskPageQueryDTO;
 import com.byy.meterreading.dto.airecognition.CancelAiRecognitionTaskDTO;
 import com.byy.meterreading.dto.airecognition.CompleteAiRecognitionTaskDTO;
@@ -552,6 +553,7 @@ public class AiRecognitionTaskServiceImpl
         ));
         MqOutboxEvent event = MqOutboxEvent.builder()
                 .eventId(eventId)
+                .traceId(TraceIdContext.getOrCreate())
                 .aggregateType(AGGREGATE_TYPE)
                 .aggregateId(task.getId())
                 .eventType(EVENT_TYPE)

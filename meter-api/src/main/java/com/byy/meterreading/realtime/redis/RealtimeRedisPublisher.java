@@ -1,5 +1,6 @@
 package com.byy.meterreading.realtime.redis;
 
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.realtime.config.RealtimeProperties;
 import com.byy.meterreading.realtime.registry.SseConnectionRegistry;
 import com.byy.meterreading.service.NotificationService;
@@ -43,7 +44,8 @@ public class RealtimeRedisPublisher {
             String payload = objectMapper.writeValueAsString(
                     new RealtimeRedisMessage(
                             notificationId,
-                            recipientUserId
+                            recipientUserId,
+                            TraceIdContext.getOrCreate()
                     )
             );
             Long subscribers = redisTemplate.convertAndSend(

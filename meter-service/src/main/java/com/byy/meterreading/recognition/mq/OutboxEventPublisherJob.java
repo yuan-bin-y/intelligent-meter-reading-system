@@ -1,5 +1,6 @@
 package com.byy.meterreading.recognition.mq;
 
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.mapper.MqOutboxEventMapper;
 import com.byy.meterreading.model.MqOutboxEvent;
 import com.byy.meterreading.model.enums.MqOutboxStatus;
@@ -124,6 +125,15 @@ public class OutboxEventPublisherJob {
             log.error("忽略缺少主键或版本号的Outbox事件");
             return;
         }
+
+        try (TraceIdContext.Scope ignored =
+                     TraceIdContext.open(event.getTraceId())) {
+            publishOneWithTrace(event);
+        }
+    }
+
+    /** 在事件创建时的 traceId 下执行抢占、发送和状态更新。 */
+    private void publishOneWithTrace(MqOutboxEvent event) {
 
         LocalDateTime lockedAt = LocalDateTime.now();
         int claimed = outboxEventMapper.claimEvent(

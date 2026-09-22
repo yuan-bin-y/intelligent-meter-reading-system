@@ -1,5 +1,6 @@
 package com.byy.meterreading.realtime.redis;
 
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.realtime.registry.SseConnectionRegistry;
 import com.byy.meterreading.service.NotificationService;
 import org.slf4j.Logger;
@@ -43,13 +44,16 @@ public class RealtimeRedisSubscriber implements MessageListener {
                     ),
                     RealtimeRedisMessage.class
             );
-            registry.sendToUser(
-                    payload.recipientUserId(),
-                    notificationService.getForDelivery(
-                            payload.notificationId(),
-                            payload.recipientUserId()
-                    )
-            );
+            try (TraceIdContext.Scope ignored =
+                         TraceIdContext.open(payload.traceId())) {
+                registry.sendToUser(
+                        payload.recipientUserId(),
+                        notificationService.getForDelivery(
+                                payload.notificationId(),
+                                payload.recipientUserId()
+                        )
+                );
+            }
         } catch (Exception exception) {
             // Pub/Sub 没有 ACK，失败通知仍可由列表和 Last-Event-ID 补偿。
             LOGGER.warn("已忽略无法投递的Redis实时通知", exception);

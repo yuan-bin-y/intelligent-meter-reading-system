@@ -1,5 +1,6 @@
 package com.byy.meterreading.recognition.mq;
 
+import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.model.MqOutboxEvent;
 import com.byy.meterreading.model.enums.MqOutboxStatus;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -69,6 +70,10 @@ public class RecognitionTaskPublisher {
                     );
                     amqpMessage.getMessageProperties().setHeader(
                             "x-event-id", event.getEventId()
+                    );
+                    amqpMessage.getMessageProperties().setHeader(
+                            TraceIdContext.MESSAGE_HEADER,
+                            event.getTraceId()
                     );
                     return amqpMessage;
                 },

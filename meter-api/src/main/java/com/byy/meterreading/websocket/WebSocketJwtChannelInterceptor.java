@@ -1,12 +1,14 @@
 package com.byy.meterreading.websocket;
 
+import com.byy.meterreading.common.trace.TraceIdContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+import org.springframework.messaging.support.ExecutorChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -25,7 +27,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class WebSocketJwtChannelInterceptor
-        implements ChannelInterceptor {
+        implements ExecutorChannelInterceptor {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
@@ -58,10 +60,45 @@ public class WebSocketJwtChannelInterceptor
             authenticateConnect(accessor);
         } else if (requiresAuthentication(command)
                 && accessor.getUser() == null) {
-            throw new AccessDeniedException("WebSocket 连接尚未完成身份认证");
+            throw new AccessDeniedException(
+                    "WebSocket 连接尚未完成身份认证"
+            );
         }
 
         return message;
+    }
+
+    /** 在真正执行 STOMP 消息处理器的工作线程中建立追踪上下文。 */
+    @Override
+    public Message<?> beforeHandle(
+            Message<?> message,
+            MessageChannel channel,
+            MessageHandler handler
+    ) {
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(
+                message,
+                StompHeaderAccessor.class
+        );
+        String traceId = accessor == null ? null
+                : accessor.getFirstNativeHeader(
+                        TraceIdContext.HTTP_HEADER
+                );
+        if (traceId == null && accessor != null) {
+            traceId = accessor.getFirstNativeHeader("x-trace-id");
+        }
+        TraceIdContext.setOrCreate(traceId);
+        return message;
+    }
+
+    /** 每条 STOMP 帧处理完成后清理工作线程，避免线程池串号。 */
+    @Override
+    public void afterMessageHandled(
+            Message<?> message,
+            MessageChannel channel,
+            MessageHandler handler,
+            Exception exception
+    ) {
+        TraceIdContext.clear();
     }
 
     /** 从 STOMP 原生请求头读取 Access Token，并建立当前连接的用户身份。 */

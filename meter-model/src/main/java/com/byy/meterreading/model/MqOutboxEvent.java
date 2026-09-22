@@ -30,6 +30,9 @@ public class MqOutboxEvent {
     /** 消息唯一编号，同时用于生产端和消费端幂等。 */
     private String eventId;
 
+    /** 创建业务事件时的 traceId，随 RabbitMQ 消息继续传递。 */
+    private String traceId;
+
     /** 对应业务聚合，例如 AI_RECOGNITION_TASK 及其任务主键。 */
     private String aggregateType;
     private Long aggregateId;

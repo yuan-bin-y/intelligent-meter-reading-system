@@ -21,6 +21,10 @@ spring:
         max-concurrency: 1
         default-requeue-rejected: false
 
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [traceId=%X{traceId:--}] %logger{40} - %msg%n%ex"
+
 app:
   ai-simulator:
     backend-base-url: ${METER_BACKEND_BASE_URL:http://127.0.0.1:8070}
