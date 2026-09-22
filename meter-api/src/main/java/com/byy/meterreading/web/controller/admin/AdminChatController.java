@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.chat.ChatConversationPageQueryDTO;
 import com.byy.meterreading.dto.chat.ClaimChatConversationDTO;
@@ -44,6 +45,12 @@ public class AdminChatController {
     }
 
     /** 当前管理员认领一条等待处理的客服会话。 */
+    @OperationAudit(
+            module = "客服会话",
+            action = "认领客服会话",
+            resourceType = "CHAT_CONVERSATION",
+            resourceIdExpression = "#conversationId"
+    )
     @PutMapping("/{conversationId}/claim")
     public Result<ChatConversationVO> claimConversation(
             @AuthenticationPrincipal Jwt jwt,
@@ -58,6 +65,12 @@ public class AdminChatController {
     }
 
     /** 当前管理员将自己处理中的客服会话转交给另一名管理员。 */
+    @OperationAudit(
+            module = "客服会话",
+            action = "转交客服会话",
+            resourceType = "CHAT_CONVERSATION",
+            resourceIdExpression = "#conversationId"
+    )
     @PutMapping("/{conversationId}/transfer")
     public Result<ChatConversationVO> transferConversation(
             @AuthenticationPrincipal Jwt jwt,

@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.devicemeter.BindDeviceMeterDTO;
 import com.byy.meterreading.dto.devicemeter.DeviceMeterPageQueryDTO;
@@ -36,6 +37,12 @@ public class AdminDeviceMeterController {
         this.deviceMeterService = deviceMeterService;
     }
 
+    @OperationAudit(
+            module = "设备表具绑定",
+            action = "绑定设备表具",
+            resourceType = "DEVICE_METER",
+            resourceIdExpression = "#result.data.meterId"
+    )
     @PostMapping("/device-meters")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceMeterBindingVO> bindMeter(
@@ -48,6 +55,12 @@ public class AdminDeviceMeterController {
         ));
     }
 
+    @OperationAudit(
+            module = "设备表具绑定",
+            action = "解绑设备表具",
+            resourceType = "DEVICE_METER",
+            resourceIdExpression = "#meterId"
+    )
     @DeleteMapping("/device-meters/{deviceId}/{meterId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> unbindMeter(

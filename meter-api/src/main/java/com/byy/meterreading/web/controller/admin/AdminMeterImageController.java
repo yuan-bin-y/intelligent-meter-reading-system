@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.meterimage.MeterImagePageQueryDTO;
 import com.byy.meterreading.dto.meterimage.UpdateMeterImageStatusDTO;
@@ -54,6 +55,12 @@ public class AdminMeterImageController {
     }
 
     /** 将模糊、错误或异常图片标记为无效，保留审计信息。 */
+    @OperationAudit(
+            module = "抄表图片",
+            action = "标记图片无效",
+            resourceType = "METER_IMAGE",
+            resourceIdExpression = "#imageId"
+    )
     @PutMapping("/meter-images/{imageId}/invalidate")
     public Result<MeterImageVersionVO> invalidateImage(
             @AuthenticationPrincipal Jwt jwt,
@@ -66,6 +73,12 @@ public class AdminMeterImageController {
     }
 
     /** 恢复被误标为无效且 OSS 对象仍存在的图片。 */
+    @OperationAudit(
+            module = "抄表图片",
+            action = "恢复抄表图片",
+            resourceType = "METER_IMAGE",
+            resourceIdExpression = "#imageId"
+    )
     @PutMapping("/meter-images/{imageId}/restore")
     public Result<MeterImageVersionVO> restoreImage(
             @AuthenticationPrincipal Jwt jwt,

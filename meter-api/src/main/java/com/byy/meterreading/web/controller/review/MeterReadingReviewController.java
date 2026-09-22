@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.review;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.meterreadingreview.ApproveMeterReadingResultDTO;
 import com.byy.meterreading.dto.meterreadingreview.MeterReadingResultPageQueryDTO;
@@ -62,6 +63,12 @@ public class MeterReadingReviewController {
     }
 
     /** 审核通过会生成正式记录并将任务推进为 COMPLETED。 */
+    @OperationAudit(
+            module = "抄表结果审核",
+            action = "审核通过",
+            resourceType = "METER_READING_RESULT",
+            resourceIdExpression = "#resultId"
+    )
     @PutMapping("/{resultId}/approve")
     public Result<MeterReadingReviewDecisionVO> approve(
             @AuthenticationPrincipal Jwt jwt,
@@ -74,6 +81,12 @@ public class MeterReadingReviewController {
     }
 
     /** 审核驳回会保留本次结果并将任务推进为 FAILED。 */
+    @OperationAudit(
+            module = "抄表结果审核",
+            action = "审核驳回",
+            resourceType = "METER_READING_RESULT",
+            resourceIdExpression = "#resultId"
+    )
     @PutMapping("/{resultId}/reject")
     public Result<MeterReadingReviewDecisionVO> reject(
             @AuthenticationPrincipal Jwt jwt,

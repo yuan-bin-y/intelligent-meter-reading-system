@@ -1,6 +1,7 @@
 package com.byy.meterreading.web.controller.admin;
 
 import com.byy.meterreading.auth.service.AdminUserService;
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.user.AdminCreateUserDTO;
 import com.byy.meterreading.dto.user.AdminResetPasswordDTO;
@@ -41,6 +42,12 @@ public class AdminUserController {
     /**
      * 创建用户并分配初始角色。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "创建用户",
+            resourceType = "USER",
+            resourceIdExpression = "#result.data.userId"
+    )
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Result<AdminUserVO> createUser(
@@ -72,6 +79,12 @@ public class AdminUserController {
     /**
      * 启用或禁用指定用户。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "修改用户状态",
+            resourceType = "USER",
+            resourceIdExpression = "#userId"
+    )
     @PutMapping("/{userId}/status")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<AdminUserVO> updateUserStatus(
@@ -89,6 +102,12 @@ public class AdminUserController {
     /**
      * 修改指定用户拥有的角色。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "修改用户角色",
+            resourceType = "USER",
+            resourceIdExpression = "#userId"
+    )
     @PutMapping("/{userId}/roles")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<AdminUserVO> updateUserRoles(
@@ -106,6 +125,12 @@ public class AdminUserController {
     /**
      * 修改指定用户的显示名称。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "修改用户资料",
+            resourceType = "USER",
+            resourceIdExpression = "#userId"
+    )
     @PutMapping("/{userId}/profile")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<AdminUserVO> updateUserProfile(
@@ -121,6 +146,13 @@ public class AdminUserController {
     /**
      * 重置指定用户的登录密码，并使其全部登录会话失效。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "重置用户密码",
+            resourceType = "USER",
+            resourceIdExpression = "#userId",
+            recordParams = false
+    )
     @PutMapping("/{userId}/password")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> resetUserPassword(
@@ -134,6 +166,12 @@ public class AdminUserController {
     /**
      * 清除指定用户的登录失败次数和临时锁定状态。
      */
+    @OperationAudit(
+            module = "用户管理",
+            action = "解除登录锁定",
+            resourceType = "USER",
+            resourceIdExpression = "#userId"
+    )
     @DeleteMapping("/{userId}/login-lock")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> clearLoginLock(@PathVariable Long userId) {

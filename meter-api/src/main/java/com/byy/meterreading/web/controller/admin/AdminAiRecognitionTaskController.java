@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.airecognition.AiRecognitionTaskPageQueryDTO;
 import com.byy.meterreading.dto.airecognition.CancelAiRecognitionTaskDTO;
@@ -38,6 +39,12 @@ public class AdminAiRecognitionTaskController {
     }
 
     /** 对一张有效且已存入 OSS 的抄表图片手动发起识别。 */
+    @OperationAudit(
+            module = "AI识别任务",
+            action = "创建AI识别任务",
+            resourceType = "AI_RECOGNITION_TASK",
+            resourceIdExpression = "#result.data.recognitionTaskId"
+    )
     @PostMapping("/meter-images/{imageId}/recognition-tasks")
     public Result<AiRecognitionTaskActionVO> createRecognitionTask(
             @AuthenticationPrincipal Jwt jwt,
@@ -69,6 +76,12 @@ public class AdminAiRecognitionTaskController {
     }
 
     /** 将失败任务恢复为待识别，并创建一条新的 Outbox 消息。 */
+    @OperationAudit(
+            module = "AI识别任务",
+            action = "重试AI识别任务",
+            resourceType = "AI_RECOGNITION_TASK",
+            resourceIdExpression = "#recognitionTaskId"
+    )
     @PostMapping("/recognition-tasks/{recognitionTaskId}/retry")
     public Result<AiRecognitionTaskActionVO> retryRecognitionTask(
             @AuthenticationPrincipal Jwt jwt,
@@ -81,6 +94,12 @@ public class AdminAiRecognitionTaskController {
     }
 
     /** 取消待识别或识别中的任务，并记录管理员与取消原因。 */
+    @OperationAudit(
+            module = "AI识别任务",
+            action = "取消AI识别任务",
+            resourceType = "AI_RECOGNITION_TASK",
+            resourceIdExpression = "#recognitionTaskId"
+    )
     @PutMapping("/recognition-tasks/{recognitionTaskId}/cancel")
     public Result<AiRecognitionTaskActionVO> cancelRecognitionTask(
             @AuthenticationPrincipal Jwt jwt,

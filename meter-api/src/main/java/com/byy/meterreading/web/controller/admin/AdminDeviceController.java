@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.device.CreateDeviceDTO;
 import com.byy.meterreading.dto.device.DevicePageQueryDTO;
@@ -43,6 +44,12 @@ public class AdminDeviceController {
         this.deviceService = deviceService;
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "新增设备",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#result.data.deviceId"
+    )
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Result<CreateDeviceVO> createDevice(
@@ -55,6 +62,12 @@ public class AdminDeviceController {
         ));
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "修改设备",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#deviceId"
+    )
     @PutMapping("/{deviceId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceVersionVO> updateDevice(
@@ -86,6 +99,13 @@ public class AdminDeviceController {
         return Result.success(deviceService.getRuntimeStatus(deviceId));
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "重置设备密钥",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#deviceId",
+            recordParams = false
+    )
     @PostMapping("/{deviceId}/secret/reset")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<ResetDeviceSecretVO> resetDeviceSecret(
@@ -108,6 +128,12 @@ public class AdminDeviceController {
         return Result.success(deviceService.listDevices(queryDTO));
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "启用设备",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#deviceId"
+    )
     @PutMapping("/{deviceId}/enable")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceVersionVO> enableDevice(
@@ -122,6 +148,12 @@ public class AdminDeviceController {
         ));
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "停用设备",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#deviceId"
+    )
     @PutMapping("/{deviceId}/disable")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<DeviceVersionVO> disableDevice(
@@ -136,6 +168,12 @@ public class AdminDeviceController {
         ));
     }
 
+    @OperationAudit(
+            module = "设备管理",
+            action = "删除设备",
+            resourceType = "DEVICE",
+            resourceIdExpression = "#deviceId"
+    )
     @DeleteMapping("/{deviceId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> deleteDevice(

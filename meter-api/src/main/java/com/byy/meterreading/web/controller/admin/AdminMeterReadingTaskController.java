@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.meterreadingtask.AssignMeterReadingTaskDTO;
 import com.byy.meterreading.dto.meterreadingtask.CancelMeterReadingTaskDTO;
@@ -43,6 +44,12 @@ public class AdminMeterReadingTaskController {
     /**
      * 创建一条已经指定抄表员或设备的待执行任务。
      */
+    @OperationAudit(
+            module = "抄表任务",
+            action = "创建抄表任务",
+            resourceType = "METER_READING_TASK",
+            resourceIdExpression = "#result.data.taskId"
+    )
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterReadingTaskDetailVO> createTask(
@@ -80,6 +87,12 @@ public class AdminMeterReadingTaskController {
     /**
      * 为待执行任务更换抄表员或设备。
      */
+    @OperationAudit(
+            module = "抄表任务",
+            action = "分配抄表任务",
+            resourceType = "METER_READING_TASK",
+            resourceIdExpression = "#taskId"
+    )
     @PutMapping("/{taskId}/assignment")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterReadingTaskVersionVO> assignTask(
@@ -97,6 +110,12 @@ public class AdminMeterReadingTaskController {
     /**
      * 取消待执行、执行中或执行失败的任务。
      */
+    @OperationAudit(
+            module = "抄表任务",
+            action = "取消抄表任务",
+            resourceType = "METER_READING_TASK",
+            resourceIdExpression = "#taskId"
+    )
     @PutMapping("/{taskId}/cancel")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterReadingTaskVersionVO> cancelTask(
@@ -114,6 +133,12 @@ public class AdminMeterReadingTaskController {
     /**
      * 将执行失败的任务恢复为待执行并增加重试次数。
      */
+    @OperationAudit(
+            module = "抄表任务",
+            action = "重试抄表任务",
+            resourceType = "METER_READING_TASK",
+            resourceIdExpression = "#taskId"
+    )
     @PostMapping("/{taskId}/retry")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterReadingTaskVersionVO> retryTask(

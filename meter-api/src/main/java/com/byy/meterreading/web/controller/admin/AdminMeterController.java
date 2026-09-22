@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.meter.CreateMeterDTO;
 import com.byy.meterreading.dto.meter.MeterPageQueryDTO;
@@ -43,6 +44,12 @@ public class AdminMeterController {
     /**
      * 新增表具，创建人和修改人均取自当前管理员身份。
      */
+    @OperationAudit(
+            module = "表具管理",
+            action = "新增表具",
+            resourceType = "METER",
+            resourceIdExpression = "#result.data.meterId"
+    )
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Result<CreateMeterVO> createMeter(
@@ -79,6 +86,12 @@ public class AdminMeterController {
     /**
      * 修改表具基础资料，表具编号和状态不在此接口中修改。
      */
+    @OperationAudit(
+            module = "表具管理",
+            action = "修改表具",
+            resourceType = "METER",
+            resourceIdExpression = "#meterId"
+    )
     @PutMapping("/{meterId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterVersionVO> updateMeter(
@@ -96,6 +109,12 @@ public class AdminMeterController {
     /**
      * 按表具生命周期规则修改状态。
      */
+    @OperationAudit(
+            module = "表具管理",
+            action = "修改表具状态",
+            resourceType = "METER",
+            resourceIdExpression = "#meterId"
+    )
     @PutMapping("/{meterId}/status")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MeterVersionVO> updateMeterStatus(
@@ -113,6 +132,12 @@ public class AdminMeterController {
     /**
      * 逻辑删除停用状态且版本未过期的表具。
      */
+    @OperationAudit(
+            module = "表具管理",
+            action = "删除表具",
+            resourceType = "METER",
+            resourceIdExpression = "#meterId"
+    )
     @DeleteMapping("/{meterId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> deleteMeter(

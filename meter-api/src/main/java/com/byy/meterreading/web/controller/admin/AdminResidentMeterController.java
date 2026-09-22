@@ -1,5 +1,6 @@
 package com.byy.meterreading.web.controller.admin;
 
+import com.byy.meterreading.common.audit.OperationAudit;
 import com.byy.meterreading.common.result.Result;
 import com.byy.meterreading.dto.residentmeter.BindResidentMeterDTO;
 import com.byy.meterreading.dto.residentmeter.BindingResourcePageQueryDTO;
@@ -38,6 +39,12 @@ public class AdminResidentMeterController {
         this.residentMeterService = residentMeterService;
     }
 
+    @OperationAudit(
+            module = "居民表具绑定",
+            action = "绑定居民表具",
+            resourceType = "RESIDENT_METER",
+            resourceIdExpression = "#result.data.meterId"
+    )
     @PostMapping("/resident-meters")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<ResidentMeterBindingVO> bindMeter(
@@ -50,6 +57,12 @@ public class AdminResidentMeterController {
         ));
     }
 
+    @OperationAudit(
+            module = "居民表具绑定",
+            action = "解绑居民表具",
+            resourceType = "RESIDENT_METER",
+            resourceIdExpression = "#meterId"
+    )
     @DeleteMapping("/resident-meters/{residentId}/{meterId}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> unbindMeter(
