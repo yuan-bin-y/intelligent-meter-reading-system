@@ -37,3 +37,4 @@ build/
 
 ### 本地配置 ###
 /meter-api/src/main/resources/application-local.yml
+/deploy/monitoring/.env

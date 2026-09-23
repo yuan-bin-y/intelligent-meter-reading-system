@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: intelligent-meter-reading-system
+    orgId: 1
+    folder: 智能抄表系统
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
