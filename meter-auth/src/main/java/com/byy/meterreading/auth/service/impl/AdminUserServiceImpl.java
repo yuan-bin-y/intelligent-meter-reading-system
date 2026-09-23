@@ -2,6 +2,7 @@ package com.byy.meterreading.auth.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.cache.BusinessCacheService;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.auth.service.AdminUserService;
 import com.byy.meterreading.auth.service.RedisAuthProtectionService;
@@ -44,19 +45,22 @@ public class AdminUserServiceImpl implements AdminUserService {
     private final RedisAuthProtectionService redisAuthProtectionService;
     private final PasswordEncoder passwordEncoder;
     private final ResidentMeterService residentMeterService;
+    private final BusinessCacheService businessCacheService;
 
     public AdminUserServiceImpl(
             SysUserService sysUserService,
             RedisAuthSessionService redisAuthSessionService,
             RedisAuthProtectionService redisAuthProtectionService,
             PasswordEncoder passwordEncoder,
-            ResidentMeterService residentMeterService
+            ResidentMeterService residentMeterService,
+            BusinessCacheService businessCacheService
     ) {
         this.sysUserService = sysUserService;
         this.redisAuthSessionService = redisAuthSessionService;
         this.redisAuthProtectionService = redisAuthProtectionService;
         this.passwordEncoder = passwordEncoder;
         this.residentMeterService = residentMeterService;
+        this.businessCacheService = businessCacheService;
     }
 
     /**
@@ -348,13 +352,15 @@ public class AdminUserServiceImpl implements AdminUserService {
      */
     @Override
     public List<AssignableRoleVO> listAssignableRoles() {
-        return sysUserService.findAllEnabledRoles().stream()
-                .map(role -> new AssignableRoleVO(
-                        role.getId(),
-                        role.getRoleCode(),
-                        role.getRoleName()
-                ))
-                .toList();
+        return businessCacheService.getAssignableRoles(
+                () -> sysUserService.findAllEnabledRoles().stream()
+                        .map(role -> new AssignableRoleVO(
+                                role.getId(),
+                                role.getRoleCode(),
+                                role.getRoleName()
+                        ))
+                        .toList()
+        );
     }
 
     /**

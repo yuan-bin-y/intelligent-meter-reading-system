@@ -148,7 +148,7 @@ public class OperationAuditAspect {
                 .module(operationAudit.module())
                 .action(operationAudit.action())
                 .resourceType(trimToNull(operationAudit.resourceType()))
-                .resourceId(resolveResourceId(
+                .resourceId(resolveResourceIdSafely(
                         joinPoint,
                         signature,
                         operationAudit.resourceIdExpression(),
@@ -168,6 +168,36 @@ public class OperationAuditAspect {
         fillCurrentUser(operationLog);
         fillRequestInformation(operationLog, signature);
         return operationLog;
+    }
+
+    /**
+     * 资源 ID 只是审计附加信息，解析失败不能导致整条审计日志丢失。
+     *
+     * <p>例如新增接口使用 {@code #result.data.meterId}，业务校验失败时
+     * Controller 没有返回值，此时 {@code result} 为 {@code null}。失败日志
+     * 仍应保存，只将无法取得的资源 ID 留空。</p>
+     */
+    private Long resolveResourceIdSafely(
+            ProceedingJoinPoint joinPoint,
+            MethodSignature signature,
+            String expression,
+            Object returnValue
+    ) {
+        try {
+            return resolveResourceId(
+                    joinPoint,
+                    signature,
+                    expression,
+                    returnValue
+            );
+        } catch (RuntimeException exception) {
+            log.debug(
+                    "无法解析审计资源ID，expression={}，method={}",
+                    expression,
+                    signature.toShortString()
+            );
+            return null;
+        }
     }
 
     /** 从 Spring Security 的 Jwt Principal 中读取操作人，不信任前端传入的用户字段。 */

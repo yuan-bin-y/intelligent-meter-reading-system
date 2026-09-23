@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.cache.BusinessCacheService;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
@@ -45,17 +46,20 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceMeterService deviceMeterService;
     private final DeviceCredentialService deviceCredentialService;
     private final DeviceHeartbeatService deviceHeartbeatService;
+    private final BusinessCacheService businessCacheService;
 
     public DeviceServiceImpl(
             DeviceMapper deviceMapper,
             DeviceMeterService deviceMeterService,
             DeviceCredentialService deviceCredentialService,
-            DeviceHeartbeatService deviceHeartbeatService
+            DeviceHeartbeatService deviceHeartbeatService,
+            BusinessCacheService businessCacheService
     ) {
         this.deviceMapper = deviceMapper;
         this.deviceMeterService = deviceMeterService;
         this.deviceCredentialService = deviceCredentialService;
         this.deviceHeartbeatService = deviceHeartbeatService;
+        this.businessCacheService = businessCacheService;
     }
 
     /**
@@ -101,6 +105,8 @@ public class DeviceServiceImpl implements DeviceService {
                 exception
             );
         }
+        // 清除该主键可能存在的短期空值缓存。
+        businessCacheService.evictDeviceDetailAfterCommit(device.getId());
         return new CreateDeviceVO(
                 device.getId(),
                 device.getDeviceNo(),
@@ -132,12 +138,24 @@ public class DeviceServiceImpl implements DeviceService {
 
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+        businessCacheService.evictDeviceDetailAfterCommit(deviceId);
         return new DeviceVersionVO(deviceId, updateDTO.version() + 1);
     }
 
     @Override
     public DeviceDetailVO getDevice(Long deviceId) {
-        return toDetailVO(requireDevice(deviceId));
+        requirePositiveDeviceId(deviceId);
+        DeviceDetailVO detail = businessCacheService.getDeviceDetail(
+                deviceId,
+                () -> {
+                    Device device = deviceMapper.selectById(deviceId);
+                    return device == null ? null : toDetailVO(device);
+                }
+        );
+        if (detail == null) {
+            throw new ResourceNotFoundException("设备不存在");
+        }
+        return detail;
     }
 
     @Override
@@ -184,6 +202,7 @@ public class DeviceServiceImpl implements DeviceService {
                         .eq(Device::getVersion, resetDTO.version());
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+        businessCacheService.evictDeviceDetailAfterCommit(deviceId);
 
         // 旧心跳由旧密钥认证产生，重置密钥后必须立即失效。
         deviceHeartbeatService.clearHeartbeat(deviceId);
@@ -301,6 +320,7 @@ public class DeviceServiceImpl implements DeviceService {
                         .eq(Device::getVersion, version);
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+        businessCacheService.evictDeviceDetailAfterCommit(deviceId);
 
         // 删除设备后同步清理 Redis 中残留的运行状态。
         deviceHeartbeatService.clearHeartbeat(deviceId);
@@ -331,6 +351,7 @@ public class DeviceServiceImpl implements DeviceService {
                         .eq(Device::getVersion, expectedVersion);
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
+        businessCacheService.evictDeviceDetailAfterCommit(deviceId);
         return new DeviceVersionVO(deviceId, expectedVersion + 1);
     }
 
@@ -342,14 +363,18 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private Device requireDevice(Long deviceId) {
-        if (deviceId == null || deviceId <= 0) {
-            throw new IllegalArgumentException("设备ID必须大于0");
-        }
+        requirePositiveDeviceId(deviceId);
         Device device = deviceMapper.selectById(deviceId);
         if (device == null) {
             throw new ResourceNotFoundException("设备不存在");
         }
         return device;
+    }
+
+    private void requirePositiveDeviceId(Long deviceId) {
+        if (deviceId == null || deviceId <= 0) {
+            throw new IllegalArgumentException("设备ID必须大于0");
+        }
     }
 
     private void requireOperatorId(Long operatorId) {

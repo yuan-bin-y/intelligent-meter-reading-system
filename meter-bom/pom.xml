@@ -18,6 +18,7 @@
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <springdoc.version>3.1.1</springdoc.version>
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
+        <redisson.version>4.7.0</redisson.version>
     </properties>
 
     <dependencyManagement>
@@ -56,6 +57,13 @@
                 <groupId>com.aliyun.oss</groupId>
                 <artifactId>aliyun-sdk-oss</artifactId>
                 <version>${aliyun-oss.version}</version>
+            </dependency>
+
+            <!-- Redisson：业务缓存重建时使用跨实例分布式锁。 -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson-spring-boot-starter</artifactId>
+                <version>${redisson.version}</version>
             </dependency>
 
         </dependencies>

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.byy.meterreading.cache.BusinessCacheService;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
@@ -46,15 +47,18 @@ public class MeterServiceImpl implements MeterService {
     private final MeterMapper meterMapper;
     private final ResidentMeterService residentMeterService;
     private final DeviceMeterService deviceMeterService;
+    private final BusinessCacheService businessCacheService;
 
     public MeterServiceImpl(
             MeterMapper meterMapper,
             ResidentMeterService residentMeterService,
-            DeviceMeterService deviceMeterService
+            DeviceMeterService deviceMeterService,
+            BusinessCacheService businessCacheService
     ) {
         this.meterMapper = meterMapper;
         this.residentMeterService = residentMeterService;
         this.deviceMeterService = deviceMeterService;
+        this.businessCacheService = businessCacheService;
     }
 
     /**
@@ -118,6 +122,9 @@ public class MeterServiceImpl implements MeterService {
             throw new ResourceConflictException("表具编号已存在", exception);
         }
 
+        // 清除该主键可能存在的短期空值缓存。
+        businessCacheService.evictMeterDetailAfterCommit(meter.getId());
+
         // 8. 新增接口只返回数据库主键和表具编号。
         return new CreateMeterVO(meter.getId(), meter.getMeterNo());
     }
@@ -173,7 +180,18 @@ public class MeterServiceImpl implements MeterService {
 
     @Override
     public MeterDetailVO getMeter(Long meterId) {
-        return toDetailVO(requireMeter(meterId));
+        requirePositiveMeterId(meterId);
+        MeterDetailVO detail = businessCacheService.getMeterDetail(
+                meterId,
+                () -> {
+                    Meter meter = meterMapper.selectById(meterId);
+                    return meter == null ? null : toDetailVO(meter);
+                }
+        );
+        if (detail == null) {
+            throw new ResourceNotFoundException("表具不存在");
+        }
+        return detail;
     }
 
     /**
@@ -230,6 +248,7 @@ public class MeterServiceImpl implements MeterService {
 
         int updatedRows = meterMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, meterId);
+        businessCacheService.evictMeterDetailAfterCommit(meterId);
         return new MeterVersionVO(
                 meterId,
                 updateMeterDTO.version() + 1
@@ -278,6 +297,7 @@ public class MeterServiceImpl implements MeterService {
 
         int updatedRows = meterMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, meterId);
+        businessCacheService.evictMeterDetailAfterCommit(meterId);
         return new MeterVersionVO(
                 meterId,
                 updateMeterStatusDTO.version() + 1
@@ -325,6 +345,7 @@ public class MeterServiceImpl implements MeterService {
 
         int updatedRows = meterMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, meterId);
+        businessCacheService.evictMeterDetailAfterCommit(meterId);
     }
 
     private boolean existsByMeterNo(String meterNo) {
@@ -335,14 +356,18 @@ public class MeterServiceImpl implements MeterService {
     }
 
     private Meter requireMeter(Long meterId) {
-        if (meterId == null || meterId <= 0) {
-            throw new IllegalArgumentException("表具ID必须大于0");
-        }
+        requirePositiveMeterId(meterId);
         Meter meter = meterMapper.selectById(meterId);
         if (meter == null) {
             throw new ResourceNotFoundException("表具不存在");
         }
         return meter;
+    }
+
+    private void requirePositiveMeterId(Long meterId) {
+        if (meterId == null || meterId <= 0) {
+            throw new IllegalArgumentException("表具ID必须大于0");
+        }
     }
 
     private void requireOperatorId(Long operatorId) {

@@ -52,6 +52,14 @@ management:
       application: ${spring.application.name}
 
 app:
+  cache:
+    business:
+      enabled: ${BUSINESS_CACHE_ENABLED:true}
+      ttl: ${BUSINESS_CACHE_TTL:PT10M}
+      ttl-jitter: ${BUSINESS_CACHE_TTL_JITTER:PT2M}
+      null-ttl: ${BUSINESS_CACHE_NULL_TTL:PT45S}
+      lock-wait: ${BUSINESS_CACHE_LOCK_WAIT:PT1S}
+      lock-lease: ${BUSINESS_CACHE_LOCK_LEASE:PT10S}
   realtime:
     timeout: ${SSE_TIMEOUT:PT30M}
     heartbeat-interval-ms: ${SSE_HEARTBEAT_INTERVAL_MS:25000}
