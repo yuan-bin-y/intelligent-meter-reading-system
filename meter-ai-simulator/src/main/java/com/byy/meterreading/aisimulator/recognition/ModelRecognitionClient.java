@@ -24,13 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * 真实视觉模型客户端。
- *
- * <p>根据 RabbitMQ 消息中的 Bucket 和 ObjectKey 从阿里云 OSS 下载原图，
- * 以 multipart/form-data 调用 Python FastAPI 的 {@code /api/v1/recognize}，
- * 再把模型响应转换成现有的成功或失败回调模型。</p>
- */
+/** 从 OSS 读取图片并调用 Python 识别服务。 */
 @Component
 public class ModelRecognitionClient {
 
@@ -78,7 +72,7 @@ public class ModelRecognitionClient {
         HttpResponse<String> response = send(request);
         JsonNode result = parseResponse(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            // 503、500 等服务异常交给 MQ 重试；不把临时故障误记成业务失败。
+            // 服务异常由 MQ 重试，不写成识别失败。
             throw new IllegalStateException(
                     "视觉模型调用失败：HTTP " + response.statusCode()
                             + "，响应=" + abbreviate(response.body(), 500)

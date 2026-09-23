@@ -53,12 +53,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * AI 识别任务状态机、Outbox 落库和识别结果跨表事务实现。
- *
- * <p>该实现只把待发送消息写入 mq_outbox_event，不直接调用 RabbitMQ；
- * 后续由独立的 Outbox 发布任务读取并发送。</p>
- */
+/** AI 识别任务和结果事务实现。 */
 @Service
 public class AiRecognitionTaskServiceImpl
         implements AiRecognitionTaskService {
@@ -101,16 +96,14 @@ public class AiRecognitionTaskServiceImpl
         this.businessNotificationService = businessNotificationService;
     }
 
-    /**
-     * 设备上传图片成功后自动创建识别任务；任务与 Outbox 同事务提交。
-     */
+    /** 为设备图片创建识别任务。 */
     @Override
     @Transactional
     public AiRecognitionTaskActionVO createAutomaticTask(Long imageId) {
         return createTask(imageId);
     }
 
-    /** 管理员手动创建使用相同的校验和 Outbox 写入流程。 */
+    /** 管理员手动创建识别任务。 */
     @Override
     @Transactional
     public AiRecognitionTaskActionVO createManualTask(
@@ -161,9 +154,7 @@ public class AiRecognitionTaskServiceImpl
         return toDetailVO(row);
     }
 
-    /**
-     * 重试复用原识别任务，增加 retryCount，并产生新的 Outbox 事件。
-     */
+    /** 重试失败的识别任务。 */
     @Override
     @Transactional
     public AiRecognitionTaskActionVO retryTask(
@@ -253,7 +244,7 @@ public class AiRecognitionTaskServiceImpl
         );
         ensureRecognitionUpdated(updated);
 
-        // 尚未成功发送的消息不再发布；已经发送的消息由回调幂等逻辑拦截。
+        // 停止发布尚未发送的消息；已发送消息由回调幂等校验处理。
         outboxEventMapper.failUnsentByAggregate(
                 AGGREGATE_TYPE,
                 task.getId(),
@@ -275,7 +266,7 @@ public class AiRecognitionTaskServiceImpl
         return toActionVO(task);
     }
 
-    /** AI 服务开始处理；重复 start 回调不会重复推进状态。 */
+    /** 处理开始回调。 */
     @Override
     @Transactional
     public void startTask(
@@ -316,9 +307,7 @@ public class AiRecognitionTaskServiceImpl
         ensureRecognitionUpdated(updated);
     }
 
-    /**
-     * 识别成功后，在一个事务中生成待审核结果、绑定图片并推进抄表任务。
-     */
+    /** 保存识别结果并推进抄表任务。 */
     @Override
     @Transactional
     public void completeTask(
@@ -439,7 +428,7 @@ public class AiRecognitionTaskServiceImpl
         );
     }
 
-    /** AI 失败回调只接受当前最新事件，并同步结束对应抄表任务。 */
+    /** 保存失败结果并结束抄表任务。 */
     @Override
     @Transactional
     public void failTask(

@@ -24,13 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/**
- * AI 识别任务消费者。
- *
- * <p>正常识别或确定的业务失败在后端回调成功后 ACK。网络错误、签名错误、
- * 后端暂不可用等异常拒绝消息，使其进入重试队列；达到最大消费次数后，
- * 将消息可靠发布到 DLQ 并 ACK 原消息。</p>
- */
+/** AI 识别任务消费者，负责 ACK、重试和死信处理。 */
 @Component
 public class RecognitionTaskConsumer {
 

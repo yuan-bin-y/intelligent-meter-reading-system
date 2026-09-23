@@ -23,12 +23,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
 
-/**
- * 使用 HMAC-SHA256 调用 Java 后端的 AI 内部回调接口。
- *
- * <p>签名原文顺序与后端完全一致：服务编号、HTTP 方法、请求路径、
- * 时间戳、随机数、请求体 SHA-256，每个字段之间使用换行符。</p>
- */
+/** 调用带 HMAC-SHA256 签名的 AI 回调接口。 */
 @Component
 public class AiCallbackClient {
 
@@ -54,7 +49,7 @@ public class AiCallbackClient {
                 .build();
     }
 
-    /** 通知后端：AI 消费者已经收到并开始处理任务。 */
+    /** 标记任务开始处理。 */
     public void start(RecognitionTaskMessage task) {
         post(
                 callbackPath(task.recognitionTaskId(), "start"),
@@ -67,7 +62,7 @@ public class AiCallbackClient {
         );
     }
 
-    /** 通知后端：识别成功，并携带读数、置信度和模型原始结果。 */
+    /** 提交识别结果。 */
     public void complete(
             RecognitionTaskMessage task,
             RecognitionOutcome.Success outcome,
@@ -88,7 +83,7 @@ public class AiCallbackClient {
         );
     }
 
-    /** 通知后端：图片无法识别等确定的业务失败。 */
+    /** 提交识别失败结果。 */
     public void fail(
             RecognitionTaskMessage task,
             RecognitionOutcome.Failure outcome,

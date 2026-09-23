@@ -11,7 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.time.Duration;
 
-/** AI 模拟器、回调认证和 RabbitMQ 消费策略配置。 */
+/** AI Worker 配置。 */
 @Validated
 @ConfigurationProperties(prefix = "app.ai-simulator")
 public record AiSimulatorProperties(

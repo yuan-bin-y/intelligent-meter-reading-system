@@ -12,12 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * 与 Java 后端保持一致的 AI 识别 RabbitMQ 拓扑。
- *
- * <p>模拟器可以先于后端启动，因此这里同样声明交换机、队列和绑定。
- * RabbitMQ 会把完全相同的重复声明视为幂等操作。</p>
- */
+/** AI 识别队列、重试队列和死信队列配置。 */
 @Configuration
 public class RecognitionMqTopology {
 
@@ -44,7 +39,7 @@ public class RecognitionMqTopology {
 
     private static final int RETRY_DELAY_MILLIS = 30_000;
 
-    /** 非 Web 模块显式提供 Jackson，用于 MQ 消息和回调请求序列化。 */
+    /** Worker 的消息序列化器。 */
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();
