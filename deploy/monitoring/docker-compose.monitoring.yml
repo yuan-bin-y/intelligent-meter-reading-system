@@ -1,4 +1,28 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4.3.6-management
+    container_name: meter-reading-rabbitmq
+    hostname: meter-reading-rabbitmq
+    restart: unless-stopped
+    environment:
+      # 仅用于本地开发；部署环境通过 .env 或系统环境变量覆盖。
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-meter_app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-meter-reading-rabbit}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VIRTUAL_HOST:-/}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "${RABBITMQ_PROMETHEUS_PORT:-15692}:15692"
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   prometheus:
     image: prom/prometheus:v3.14.0
     container_name: meter-reading-prometheus
@@ -47,5 +71,6 @@ services:
       retries: 10
 
 volumes:
+  rabbitmq-data:
   prometheus-data:
   grafana-data:

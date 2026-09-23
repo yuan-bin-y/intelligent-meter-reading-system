@@ -12,6 +12,12 @@ spring:
       port: ${REDIS_PORT:6379}
       database: ${REDIS_DATABASE:0}
       password: ${REDIS_PASSWORD:}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:meter_app}
+    password: ${RABBITMQ_PASSWORD:meter-reading-rabbit}
+    virtual-host: ${RABBITMQ_VIRTUAL_HOST:/}
   flyway:
     enabled: true
     locations: classpath:db/migration
