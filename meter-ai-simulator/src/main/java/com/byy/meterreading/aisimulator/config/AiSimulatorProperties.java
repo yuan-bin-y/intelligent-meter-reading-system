@@ -28,13 +28,31 @@ public record AiSimulatorProperties(
         @NotNull Duration publisherConfirmTimeout,
         @Positive int maxConsumeAttempts,
         @NotBlank String failureCode,
-        @NotBlank String failureMessage
+        @NotBlank String failureMessage,
+        String modelBaseUrl,
+        @NotNull Duration modelRequestTimeout,
+        @Positive long maxImageBytes,
+        String ossEndpoint,
+        String ossAccessKeyId,
+        String ossAccessKeySecret
 ) {
 
     public AiSimulatorProperties {
         requireNonNegative(processingDelay, "模拟识别耗时");
         requirePositive(callbackTimeout, "回调超时时间");
         requirePositive(publisherConfirmTimeout, "消息确认超时时间");
+        requirePositive(modelRequestTimeout, "模型请求超时时间");
+        if (maxImageBytes >= Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "AI_MODEL_MAX_IMAGE_BYTES必须小于2GB"
+            );
+        }
+        if (mode == AiSimulatorMode.MODEL) {
+            requireText(modelBaseUrl, "AI_MODEL_BASE_URL");
+            requireText(ossEndpoint, "OSS_ENDPOINT");
+            requireText(ossAccessKeyId, "OSS_ACCESS_KEY_ID");
+            requireText(ossAccessKeySecret, "OSS_ACCESS_KEY_SECRET");
+        }
     }
 
     private static void requirePositive(Duration value, String name) {
@@ -46,6 +64,12 @@ public record AiSimulatorProperties(
     private static void requireNonNegative(Duration value, String name) {
         if (value != null && value.isNegative()) {
             throw new IllegalArgumentException(name + "不能小于0");
+        }
+    }
+
+    private static void requireText(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + "未配置");
         }
     }
 }

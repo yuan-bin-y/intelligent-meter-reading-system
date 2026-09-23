@@ -10,6 +10,8 @@ package com.byy.meterreading.recognition.mq;
  * @param meterId          表具主键
  * @param bucketName       图片所在的 OSS Bucket
  * @param objectKey        图片在 OSS 中的对象路径
+ * @param meterType        表具类型：WATER、ELECTRIC、GAS
+ * @param displayType      表盘显示类型：LCD、MECHANICAL_ROLLER
  * @param attemptNo        同一图片的识别任务尝试序号
  */
 public record RecognitionTaskMessage(
@@ -20,6 +22,8 @@ public record RecognitionTaskMessage(
         Long meterId,
         String bucketName,
         String objectKey,
+        String meterType,
+        String displayType,
         Integer attemptNo
 ) {
 }

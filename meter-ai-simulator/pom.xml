@@ -41,6 +41,12 @@
             <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+
+        <!-- 真实识别模式下根据 MQ 中的 Bucket/ObjectKey 下载原始图片。 -->
+        <dependency>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

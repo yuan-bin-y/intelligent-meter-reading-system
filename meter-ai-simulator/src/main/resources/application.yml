@@ -41,3 +41,10 @@ app:
     max-consume-attempts: ${AI_SIMULATOR_MAX_CONSUME_ATTEMPTS:3}
     failure-code: ${AI_SIMULATOR_FAILURE_CODE:IMAGE_UNREADABLE}
     failure-message: ${AI_SIMULATOR_FAILURE_MESSAGE:模拟图片无法识别}
+    # MODEL 模式：从 OSS 下载图片后调用视觉识别项目的 FastAPI 服务。
+    model-base-url: ${AI_MODEL_BASE_URL:http://127.0.0.1:8001}
+    model-request-timeout: ${AI_MODEL_REQUEST_TIMEOUT:PT90S}
+    max-image-bytes: ${AI_MODEL_MAX_IMAGE_BYTES:15728640}
+    oss-endpoint: ${OSS_ENDPOINT:}
+    oss-access-key-id: ${OSS_ACCESS_KEY_ID:}
+    oss-access-key-secret: ${OSS_ACCESS_KEY_SECRET:}

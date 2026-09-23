@@ -9,6 +9,8 @@ public sealed interface RecognitionOutcome {
     record Success(
             BigDecimal recognizedValue,
             BigDecimal confidence,
+            String modelName,
+            String modelVersion,
             String rawResult
     ) implements RecognitionOutcome {
     }

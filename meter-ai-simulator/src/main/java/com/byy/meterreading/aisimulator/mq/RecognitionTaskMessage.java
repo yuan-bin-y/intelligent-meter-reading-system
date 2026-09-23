@@ -9,6 +9,8 @@ public record RecognitionTaskMessage(
         Long meterId,
         String bucketName,
         String objectKey,
+        String meterType,
+        String displayType,
         Integer attemptNo
 ) {
 }

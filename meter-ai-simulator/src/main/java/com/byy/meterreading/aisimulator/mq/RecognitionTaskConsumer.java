@@ -83,7 +83,7 @@ public class RecognitionTaskConsumer {
                 if (outcome instanceof RecognitionOutcome.Success success) {
                     callbackClient.complete(task, success, durationMs);
                     log.info(
-                            "模拟AI识别成功并完成回调：eventId={}, taskId={}, value={}",
+                            "AI识别成功并完成回调：eventId={}, taskId={}, value={}",
                             task.eventId(),
                             task.recognitionTaskId(),
                             success.recognizedValue()
@@ -91,7 +91,7 @@ public class RecognitionTaskConsumer {
                 } else if (outcome instanceof RecognitionOutcome.Failure failure) {
                     callbackClient.fail(task, failure, durationMs);
                     log.info(
-                            "模拟AI识别失败并完成回调：eventId={}, taskId={}, code={}",
+                            "AI识别失败并完成回调：eventId={}, taskId={}, code={}",
                             task.eventId(),
                             task.recognitionTaskId(),
                             failure.failureCode()

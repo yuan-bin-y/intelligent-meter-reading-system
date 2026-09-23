@@ -15,6 +15,7 @@ import com.byy.meterreading.dto.airecognition.RetryAiRecognitionTaskDTO;
 import com.byy.meterreading.dto.airecognition.StartAiRecognitionTaskDTO;
 import com.byy.meterreading.mapper.AiRecognitionTaskMapper;
 import com.byy.meterreading.mapper.MeterImageMapper;
+import com.byy.meterreading.mapper.MeterMapper;
 import com.byy.meterreading.mapper.MeterReadingResultImageMapper;
 import com.byy.meterreading.mapper.MeterReadingResultMapper;
 import com.byy.meterreading.mapper.MeterReadingTaskMapper;
@@ -23,6 +24,7 @@ import com.byy.meterreading.mapper.projection.AiRecognitionTaskDetailRow;
 import com.byy.meterreading.mapper.projection.AiRecognitionTaskListRow;
 import com.byy.meterreading.model.AiRecognitionTask;
 import com.byy.meterreading.model.MeterImage;
+import com.byy.meterreading.model.Meter;
 import com.byy.meterreading.model.MeterReadingResult;
 import com.byy.meterreading.model.MeterReadingResultImage;
 import com.byy.meterreading.model.MeterReadingTask;
@@ -70,6 +72,7 @@ public class AiRecognitionTaskServiceImpl
     private final AiRecognitionTaskMapper recognitionTaskMapper;
     private final MqOutboxEventMapper outboxEventMapper;
     private final MeterImageMapper imageMapper;
+    private final MeterMapper meterMapper;
     private final MeterReadingTaskMapper readingTaskMapper;
     private final MeterReadingResultMapper readingResultMapper;
     private final MeterReadingResultImageMapper resultImageMapper;
@@ -80,6 +83,7 @@ public class AiRecognitionTaskServiceImpl
             AiRecognitionTaskMapper recognitionTaskMapper,
             MqOutboxEventMapper outboxEventMapper,
             MeterImageMapper imageMapper,
+            MeterMapper meterMapper,
             MeterReadingTaskMapper readingTaskMapper,
             MeterReadingResultMapper readingResultMapper,
             MeterReadingResultImageMapper resultImageMapper,
@@ -89,6 +93,7 @@ public class AiRecognitionTaskServiceImpl
         this.recognitionTaskMapper = recognitionTaskMapper;
         this.outboxEventMapper = outboxEventMapper;
         this.imageMapper = imageMapper;
+        this.meterMapper = meterMapper;
         this.readingTaskMapper = readingTaskMapper;
         this.readingResultMapper = readingResultMapper;
         this.resultImageMapper = resultImageMapper;
@@ -540,6 +545,10 @@ public class AiRecognitionTaskServiceImpl
             AiRecognitionTask task,
             MeterImage image
     ) {
+        Meter meter = meterMapper.selectById(task.getMeterId());
+        if (meter == null) {
+            throw new ResourceNotFoundException("关联表具不存在");
+        }
         String eventId = generateEventId();
         String payload = writeJson(Map.of(
                 "eventId", eventId,
@@ -549,6 +558,8 @@ public class AiRecognitionTaskServiceImpl
                 "meterId", task.getMeterId(),
                 "bucketName", image.getBucketName(),
                 "objectKey", image.getObjectKey(),
+                "meterType", meter.getMeterType(),
+                "displayType", meter.getDisplayType(),
                 "attemptNo", task.getAttemptNo()
         ));
         MqOutboxEvent event = MqOutboxEvent.builder()

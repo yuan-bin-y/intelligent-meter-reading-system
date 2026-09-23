@@ -80,8 +80,8 @@ public class AiCallbackClient {
                         task.attemptNo(),
                         outcome.recognizedValue(),
                         outcome.confidence(),
-                        properties.modelName(),
-                        properties.modelVersion(),
+                        outcome.modelName(),
+                        outcome.modelVersion(),
                         outcome.rawResult(),
                         processingDurationMs
                 )

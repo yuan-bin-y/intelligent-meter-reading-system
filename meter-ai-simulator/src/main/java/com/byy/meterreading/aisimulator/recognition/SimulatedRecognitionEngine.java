@@ -15,17 +15,23 @@ public class SimulatedRecognitionEngine implements RecognitionEngine {
 
     private final AiSimulatorProperties properties;
     private final ObjectMapper objectMapper;
+    private final ModelRecognitionClient modelRecognitionClient;
 
     public SimulatedRecognitionEngine(
             AiSimulatorProperties properties,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ModelRecognitionClient modelRecognitionClient
     ) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.modelRecognitionClient = modelRecognitionClient;
     }
 
     @Override
     public RecognitionOutcome recognize(RecognitionTaskMessage task) {
+        if (properties.mode() == AiSimulatorMode.MODEL) {
+            return modelRecognitionClient.recognize(task);
+        }
         waitForConfiguredDelay();
 
         if (properties.mode() == AiSimulatorMode.TRANSIENT_FAILURE) {
@@ -41,6 +47,8 @@ public class SimulatedRecognitionEngine implements RecognitionEngine {
         return new RecognitionOutcome.Success(
                 properties.recognizedValue(),
                 properties.confidence(),
+                properties.modelName(),
+                properties.modelVersion(),
                 createRawResult(task)
         );
     }
