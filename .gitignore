@@ -35,9 +35,29 @@ build/
 ### VS Code ###
 .vscode/
 
+### Node / Vue ###
+node_modules/
+/meter-web/dist/
+
 ### 本地配置 ###
 /meter-api/src/main/resources/application-local.yml
 /deploy/monitoring/.env
+/deploy/.env
 
 ### 运行日志 ###
 /logs/
+
+### Python / AI 服务 ###
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+/meter-ai-service/.env
+/meter-ai-service/.paddlex/
+/meter-ai-service/debug/
+
+# 视觉模型和测试图片留在本机，不放入 Git。
+/meter-ai-service/models/*
+!/meter-ai-service/models/README.md
+/meter-ai-service/samples/

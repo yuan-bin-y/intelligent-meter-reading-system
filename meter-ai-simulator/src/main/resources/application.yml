@@ -1,6 +1,6 @@
 spring:
   application:
-    name: meter-ai-simulator
+    name: meter-ai-worker
   main:
     web-application-type: none
   rabbitmq:

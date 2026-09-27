@@ -102,6 +102,7 @@ public class RecognitionTaskConsumer {
                         channel,
                         deliveryTag,
                         currentAttempt,
+                        elapsedMillis(startedNanos),
                         exception
                 );
             }
@@ -114,6 +115,7 @@ public class RecognitionTaskConsumer {
             Channel channel,
             long deliveryTag,
             int currentAttempt,
+            long durationMs,
             Exception exception
     ) throws IOException {
         String eventId = task == null ? null : task.eventId();
@@ -133,6 +135,20 @@ public class RecognitionTaskConsumer {
         }
 
         try {
+            // 先落业务失败状态；回调失败时保留消息，等待重试队列再次投递。
+            if (task != null
+                    && task.recognitionTaskId() != null
+                    && task.attemptNo() != null
+                    && !isBlank(task.eventId())) {
+                callbackClient.fail(
+                        task,
+                        new RecognitionOutcome.Failure(
+                                "CONSUME_RETRIES_EXHAUSTED",
+                                abbreviate("AI任务消费重试耗尽：" + exception.getMessage())
+                        ),
+                        durationMs
+                );
+            }
             publishToDeadLetter(originalMessage, currentAttempt, exception);
             channel.basicAck(deliveryTag, false);
             log.error(
@@ -142,12 +158,12 @@ public class RecognitionTaskConsumer {
                     currentAttempt,
                     exception
             );
-        } catch (RuntimeException deadLetterException) {
+        } catch (RuntimeException terminalException) {
             log.error(
-                    "AI任务发布DLQ失败，消息重新进入延迟重试：eventId={}, taskId={}",
+                    "AI任务终态回调或DLQ发布失败，消息重新进入延迟重试：eventId={}, taskId={}",
                     eventId,
                     taskId,
-                    deadLetterException
+                    terminalException
             );
             channel.basicReject(deliveryTag, false);
         }

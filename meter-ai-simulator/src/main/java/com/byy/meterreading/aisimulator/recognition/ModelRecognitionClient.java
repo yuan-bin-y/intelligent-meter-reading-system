@@ -43,6 +43,7 @@ public class ModelRecognitionClient {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.modelRequestTimeout())
                 .build();
         this.recognizeUri = resolveRecognizeUri(properties.modelBaseUrl());

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+debug/
+tests/
+samples/
+models/*
+!models/display_detector.onnx
+!models/meter_rec_yolo_v1/
+!models/meter_rec_yolo_v1/**

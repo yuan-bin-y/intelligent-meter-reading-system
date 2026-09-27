@@ -13,8 +13,8 @@
     </parent>
 
     <artifactId>meter-ai-simulator</artifactId>
-    <name>meter-ai-simulator</name>
-    <description>AI 视觉识别服务本地模拟器</description>
+    <name>meter-ai-worker</name>
+    <description>RabbitMQ 消费、OSS 图片读取和 Python 视觉识别服务适配器</description>
 
     <dependencies>
         <dependency>
