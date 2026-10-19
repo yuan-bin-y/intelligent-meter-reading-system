@@ -11,8 +11,9 @@ from .api.recognize import router as recognize_router
 from .core.config import settings
 from .registry import get_recognizer, list_models, recognizer_kind
 
-logging.basicConfig(level=settings.log_level,
-                    format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logging.basicConfig(
+    level=settings.log_level, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
+)
 log = logging.getLogger("ai-service")
 
 
@@ -20,8 +21,7 @@ log = logging.getLogger("ai-service")
 async def lifespan(_: FastAPI):
     """启动时加载模型，加载失败则终止启动。"""
     recognizer = get_recognizer()
-    log.info("AI 服务启动 mode=%s recognizer=%s", settings.mode,
-             recognizer.name)
+    log.info("AI 服务启动 mode=%s recognizer=%s", settings.mode, recognizer.name)
     yield
 
 
@@ -29,7 +29,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.version,
     description="智能抄表算法服务：图片质量检测 / 表具分类 / 表盘检测 / 读数识别。"
-                "仅由 Java 业务后端调用，不直接访问业务数据库。",
+    "仅由 Java 业务后端调用，不直接访问业务数据库。",
     lifespan=lifespan,
 )
 

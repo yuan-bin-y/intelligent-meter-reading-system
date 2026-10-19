@@ -37,20 +37,47 @@ build/
 
 ### Node / Vue ###
 node_modules/
-/meter-web/dist/
+# 前端仅保留在本机，不随当前后端仓库提交。
+/meter-web/
 
 ### 本地配置 ###
-/meter-api/src/main/resources/application-local.yml
-/deploy/monitoring/.env
-/deploy/.env
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+**/src/main/resources/application-local.yml
+**/src/main/resources/application-local.yaml
+**/src/main/resources/application-local.properties
+.local/
+/tmp/
+/temp/
+/secrets/
+*.jks
+*.keystore
+*.p12
+*.pfx
+Thumbs.db
+Desktop.ini
+.DS_Store
 
 ### 运行日志 ###
 /logs/
+*.log
+
+### 本地测试，不随正式源码提交 ###
+**/src/test/
+/meter-ai-service/tests/
+/meter-ai-service/pytest.ini
+/meter-ai-service/.coverage*
+/meter-ai-service/htmlcov/
 
 ### Python / AI 服务 ###
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
+.quality-venv/
 .venv/
 venv/
 /meter-ai-service/.env
@@ -61,3 +88,17 @@ venv/
 /meter-ai-service/models/*
 !/meter-ai-service/models/README.md
 /meter-ai-service/samples/
+/meter-ai-service/test-results.xml
+
+# Mock、OpenCV 基线和指针实验仅供本机验证，正式链路使用 YOLO + PaddleOCR。
+/meter-ai-service/app/recognizers/mock.py
+/meter-ai-service/app/recognizers/real.py
+/meter-ai-service/app/recognizers/pointer.py
+/meter-ai-service/app/pipeline/classify.py
+/meter-ai-service/app/pipeline/reader.py
+/meter-ai-service/app/pipeline/pointer.py
+/meter-ai-service/app/pipeline/digit_layout.py
+/meter-ai-service/app/pipeline/digit_recognizer.py
+/meter-ai-service/app/pipeline/digit_rows.py
+/meter-ai-service/app/pipeline/digit_templates.py
+/meter-ai-service/app/pipeline/pointer_reader.py

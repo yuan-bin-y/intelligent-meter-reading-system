@@ -57,8 +57,12 @@ def check_quality(image: np.ndarray) -> QualityReport:
         aspect_score = 0.3
 
     score = round(
-        _W_SHARP * sharp_score + _W_BRIGHT * bright_score
-        + _W_RES * res_score + _W_ASPECT * aspect_score, 4)
+        _W_SHARP * sharp_score
+        + _W_BRIGHT * bright_score
+        + _W_RES * res_score
+        + _W_ASPECT * aspect_score,
+        4,
+    )
 
     return QualityReport(
         passed=len(issues) == 0,

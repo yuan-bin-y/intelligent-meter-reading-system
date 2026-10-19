@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass, field
 
 # 表具类型与单位
@@ -15,8 +16,9 @@ class RuleCheckResult:
     reading: str | None = None
 
 
-def validate_reading(raw: str | None, meter_type: str,
-                     previous_reading: str | None = None) -> RuleCheckResult:
+def validate_reading(
+    raw: str | None, meter_type: str, previous_reading: str | None = None
+) -> RuleCheckResult:
     """校验读数格式，并检查读数是否下降。"""
     if not raw:
         return RuleCheckResult(False, ["E_EMPTY_READING"], None)
@@ -49,8 +51,6 @@ def fuse_confidence(detector_conf: float, char_conf: float, quality_score: float
     return round(max(0.0, min(1.0, detector_conf * char_conf * (0.9 + 0.1 * quality_score))), 4)
 
 
-import re as _re
-
 # 合理读数格式：1-10 位整数 + 可选小数（1-4 位）
 READING_PATTERN = _re.compile(r"^\d{1,10}([.,]\d{1,4})?$")
 
@@ -68,6 +68,7 @@ def is_valid_reading_format(text: str) -> bool:
 
 def pick_best_candidate(candidates: list[dict]) -> dict | None:
     """按格式、长度、置信度和位置选择候选读数。"""
+
     def sort_key(c: dict) -> tuple:
         text = normalize_ocr_text(c.get("text", ""))
         fmt = 1 if is_valid_reading_format(text) else 0

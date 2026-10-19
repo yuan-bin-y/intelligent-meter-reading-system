@@ -21,9 +21,9 @@ def denoise(img: np.ndarray) -> np.ndarray:
 def apply_clahe(img: np.ndarray) -> np.ndarray:
     """使用 CLAHE 增强亮度通道。"""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    l = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(l)
-    return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    luminance, a, b = cv2.split(lab)
+    luminance = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(luminance)
+    return cv2.cvtColor(cv2.merge([luminance, a, b]), cv2.COLOR_LAB2BGR)
 
 
 def preprocess(img: np.ndarray) -> np.ndarray:

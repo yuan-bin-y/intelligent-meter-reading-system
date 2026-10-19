@@ -7,6 +7,14 @@
 **/.venv
 **/__pycache__
 **/.pytest_cache
+**/.quality-venv
+**/.ruff_cache
+**/src/test
+meter-web/tests
+meter-web/e2e
+meter-web/src/**/*.test.*
+meter-web/src/**/*.spec.*
+meter-web/vitest.config.*
 meter-web/dist
 meter-ai-service/models
 meter-ai-service/.paddlex
@@ -16,5 +24,14 @@ meter-api/src/main/resources/application-local.yml
 deploy/.env
 deploy/monitoring/.env
 **/.env
+**/.env.*
+!**/.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+tmp
+temp
+.local
+secrets
 logs
 

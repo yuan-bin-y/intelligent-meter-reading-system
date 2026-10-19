@@ -17,6 +17,7 @@ from ..pipeline.rectify import deskew
 from ..quality.checker import check_quality
 from ..schemas.recognition import RecognitionResult
 from .base import MeterRecognizer
+from .ocr_output import dump_result_json, run_ocr, select_candidate, visualize
 
 
 class RecognizerInitError(RuntimeError):
@@ -41,8 +42,7 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
         if self._init_error:
             raise RecognizerInitError(self._init_error)
         try:
-            os.environ.setdefault("PADDLE_PDX_MODEL_SOURCE",
-                                  settings.paddle_model_source)
+            os.environ.setdefault("PADDLE_PDX_MODEL_SOURCE", settings.paddle_model_source)
             os.environ.setdefault("PADDLE_DEVICE", settings.paddle_device)
             site_dir = Path(__file__).resolve().parent.parent.parent
             for bin_dir in sorted(site_dir.glob("nvidia/*/bin")):
@@ -60,8 +60,7 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
                         continue
                     import yaml
 
-                    config = yaml.safe_load(
-                        config_path.read_text(encoding="utf-8")) or {}
+                    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
                     model_name = (
                         config.get("Global", {}).get("model_name")
                         or config.get("Model", {}).get("name")
@@ -88,21 +87,23 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
             raise RecognizerInitError(self._init_error) from exc
 
     @staticmethod
-    def _strip_ocr_inputs(crop: np.ndarray, _located=None,
-                          _tracer: Tracer | None = None
-                          ) -> list[tuple[str, np.ndarray]]:
+    def _strip_ocr_inputs(
+        crop: np.ndarray, _located=None, _tracer: Tracer | None = None
+    ) -> list[tuple[str, np.ndarray]]:
         """生成与训练阶段一致的 OCR 输入图。"""
         base = crop
         if base.shape[0] < 64:
             scale = 64.0 / base.shape[0]
-            base = cv2.resize(base, None, fx=scale, fy=scale,
-                              interpolation=cv2.INTER_CUBIC)
+            base = cv2.resize(base, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         return [("color", base)]
 
-    def recognize(self, image: np.ndarray,
-                  meter_type_hint: str | None = None,
-                  dial_type_hint: str | None = None,
-                  previous_reading: str | None = None) -> RecognitionResult:
+    def recognize(
+        self,
+        image: np.ndarray,
+        meter_type_hint: str | None = None,
+        dial_type_hint: str | None = None,
+        previous_reading: str | None = None,
+    ) -> RecognitionResult:
         start_ms = self.now_ms()
         tracer = Tracer()
         warnings: list[str] = []
@@ -129,8 +130,10 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
             scale_x = image.shape[1] / processed.shape[1]
             scale_y = image.shape[0] / processed.shape[0]
             display_box = [
-                int(round(x * scale_x)), int(round(y * scale_y)),
-                int(round(width * scale_x)), int(round(height * scale_y)),
+                int(round(x * scale_x)),
+                int(round(y * scale_y)),
+                int(round(width * scale_x)),
+                int(round(height * scale_y)),
             ]
             tracer.save("02_meter_roi", crop)
             tracer.log(
@@ -145,7 +148,7 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
             for variant_name, variant_image in variants:
                 tracer.save(f"05_ocr_input_{variant_name}", variant_image)
                 try:
-                    outputs = self._run_ocr(engine, variant_image)
+                    outputs = run_ocr(engine, variant_image)
                 except Exception as exc:  # noqa: BLE001
                     tracer.log(f"裁剪图 OCR 变体 {variant_name} 异常: {exc}")
                     continue
@@ -158,19 +161,17 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
                     variant_records.append(record)
                     normalized = rules.normalize_ocr_text(text)
                     if rules.is_valid_reading_format(normalized):
-                        candidates.append({
-                            "variant": record["variant"], "text": text,
-                            "score": float(score), "box": candidate_box,
-                        })
-            tracer.log(
-                f"裁剪图候选: {json.dumps(variant_records, ensure_ascii=False)}")
+                        candidates.append(
+                            {
+                                "variant": record["variant"],
+                                "text": text,
+                                "score": float(score),
+                                "box": candidate_box,
+                            }
+                        )
+            tracer.log(f"裁剪图候选: {json.dumps(variant_records, ensure_ascii=False)}")
 
-        # 无合法读数时保留得分最高的原文，供人工复核。
-        best = rules.pick_best_candidate(candidates) if candidates else None
-        if best is None and variant_records:
-            best = rules.pick_best_candidate(variant_records)
-        raw_text = rules.normalize_ocr_text(best["text"]) if best else None
-        ocr_score = float(best["score"]) if best else 0.0
+        best, raw_text, ocr_score = select_candidate(candidates, variant_records)
         tracer.log(
             f"选中候选: {raw_text!r} score={ocr_score:.2f} "
             f"variant={best.get('variant') if best else None}"
@@ -186,7 +187,8 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
         check = rules.validate_reading(raw_text, meter_type, previous_reading)
         reading = check.reading
         issues = quality.quality_issues + [
-            issue for issue in check.issues if issue.startswith("E_")]
+            issue for issue in check.issues if issue.startswith("E_")
+        ]
         if not raw_text:
             warnings.append("W_EMPTY_TEXT")
         elif reading is None:
@@ -196,16 +198,12 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
         if "W_READING_DROP" in check.issues:
             warnings.append("W_READING_DROP")
 
-        confidence = (
-            round(ocr_score * (0.9 + 0.1 * quality.quality_score), 4)
-            if raw_text else 0.0
-        )
+        confidence = round(ocr_score * (0.9 + 0.1 * quality.quality_score), 4) if raw_text else 0.0
         needs_review = (
             reading is None
             or confidence < settings.review_threshold
             or ocr_score < settings.ocr_confidence_threshold
-            or any(code in ("W_DISPLAY_NOT_FOUND", "W_INVALID_FORMAT")
-                   for code in warnings)
+            or any(code in ("W_DISPLAY_NOT_FOUND", "W_INVALID_FORMAT") for code in warnings)
         )
 
         fail_stage = None
@@ -232,8 +230,7 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
             model_name=f"paddleocr-{Path(self._loaded_model_ref).name}",
             model_version=self.version,
             inference_time_ms=self.now_ms() - start_ms,
-            message="识别成功" if reading else (
-                "未得到有效读数（" + "、".join(warnings) + "）"),
+            message="识别成功" if reading else ("未得到有效读数（" + "、".join(warnings) + "）"),
             raw_text=raw_text,
             recognizer="paddleocr",
             display_box=display_box,
@@ -244,60 +241,11 @@ class PaddleOCRMeterRecognizer(MeterRecognizer):
         if chosen_input is not None:
             tracer.save(
                 "06_result_visualized",
-                self._visualize(chosen_input, raw_text, ocr_score),
+                visualize(chosen_input, raw_text, ocr_score),
             )
         tracer.log(
             f"最终结果 reading={reading} conf={confidence} "
             f"warnings={warnings} failStage={fail_stage}"
         )
-        self._dump_result_json(tracer, result)
+        dump_result_json(tracer, result)
         return result
-
-    @staticmethod
-    def _run_ocr(engine, image_bgr: np.ndarray
-                 ) -> list[tuple[str, float, list[int] | None]]:
-        """调用 PaddleOCR 并统一 3.x 返回结构。"""
-        candidates: list[tuple[str, float, list[int] | None]] = []
-        for result in engine.predict(image_bgr):
-            data = result.json.get("res", result.json) if hasattr(result, "json") else {}
-            texts = data.get("rec_texts")
-            scores = data.get("rec_scores")
-            boxes = data.get("rec_boxes")
-            if texts is None:
-                texts = [data["rec_text"]] if data.get("rec_text") else []
-                scores = [data.get("rec_score", 0.0)]
-                boxes = [data["rec_box"]] if data.get("rec_box") else [None]
-            for index, text in enumerate(texts):
-                score = float(scores[index]) if index < len(scores) else 0.0
-                box = None
-                if boxes and index < len(boxes) and boxes[index] is not None:
-                    try:
-                        box = [int(value) for value in
-                               np.asarray(boxes[index]).flatten()[:4]]
-                    except Exception:  # noqa: BLE001
-                        box = None
-                candidates.append((text, score, box))
-        return candidates
-
-    @staticmethod
-    def _visualize(ocr_input: np.ndarray, text: str | None,
-                   score: float) -> np.ndarray:
-        visual = ocr_input.copy()
-        pad = max(6, visual.shape[0] // 8)
-        visual = cv2.copyMakeBorder(
-            visual, pad, pad, 8, 8, cv2.BORDER_CONSTANT, value=(30, 30, 30))
-        cv2.putText(visual, f"{text or '-'}  {score:.2f}",
-                    (8, visual.shape[0] - 6), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7, (0, 255, 120), 2)
-        return visual
-
-    @staticmethod
-    def _dump_result_json(tracer: Tracer, result: RecognitionResult) -> None:
-        if not tracer.enabled:
-            return
-        path = Path(tracer.dir) / "result.json"
-        path.write_text(
-            json.dumps(result.model_dump(by_alias=True), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tracer.log(f"结果 JSON → {path}")

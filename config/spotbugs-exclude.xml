@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- 当前没有例外。发现问题后修复代码；确有误报时在这里按类和方法记录原因。 -->
+</FindBugsFilter>

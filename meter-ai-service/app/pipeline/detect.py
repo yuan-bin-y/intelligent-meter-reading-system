@@ -8,8 +8,9 @@ from functools import lru_cache
 import cv2
 import numpy as np
 
-_WEIGHTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), "models")
+_WEIGHTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models"
+)
 _DETECTOR_PATH = os.path.join(_WEIGHTS_DIR, "dial_detector.onnx")
 _DISPLAY_DETECTOR_PATH = os.path.join(_WEIGHTS_DIR, "display_detector.onnx")
 
@@ -27,20 +28,22 @@ def display_detector_backend() -> str:
     return "yolo-onnx" if os.path.isfile(_DISPLAY_DETECTOR_PATH) else "unavailable"
 
 
-def detect_display(img: np.ndarray, confidence: float = 0.35,
-                   iou_threshold: float = 0.45) -> list[tuple[int, int, int, int, float]]:
+def detect_display(
+    img: np.ndarray, confidence: float = 0.35, iou_threshold: float = 0.45
+) -> list[tuple[int, int, int, int, float]]:
     """检测数字显示区，坐标基于原图。"""
     if not os.path.isfile(_DISPLAY_DETECTOR_PATH):
         return []
     return _detect_onnx(img, _DISPLAY_DETECTOR_PATH, confidence, iou_threshold)
 
 
-def crop_display(img: np.ndarray,
-                 confidence: float = DISPLAY_CONFIDENCE,
-                 pad_x_ratio: float = DISPLAY_PAD_X_RATIO,
-                 pad_y_ratio: float = DISPLAY_PAD_Y_RATIO,
-                 min_height: int = 64,
-                 ) -> tuple[np.ndarray, list[int], float] | None:
+def crop_display(
+    img: np.ndarray,
+    confidence: float = DISPLAY_CONFIDENCE,
+    pad_x_ratio: float = DISPLAY_PAD_X_RATIO,
+    pad_y_ratio: float = DISPLAY_PAD_Y_RATIO,
+    min_height: int = 64,
+) -> tuple[np.ndarray, list[int], float] | None:
     """裁剪数字显示区，返回图片、位置和置信度。"""
     boxes = detect_display(img, confidence=confidence)
     if not boxes:
@@ -59,8 +62,7 @@ def crop_display(img: np.ndarray,
     crop = img[y1:y2, x1:x2].copy()
     if crop.shape[0] < min_height:
         scale = min_height / crop.shape[0]
-        crop = cv2.resize(crop, None, fx=scale, fy=scale,
-                          interpolation=cv2.INTER_CUBIC)
+        crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     return crop, [x1, y1, x2 - x1, y2 - y1], float(score)
 
 
@@ -91,9 +93,9 @@ def _load_cv_net(path: str):
         return None
 
 
-def _detect_onnx(img: np.ndarray, model_path: str,
-                 confidence: float = 0.35,
-                 iou_threshold: float = 0.45) -> list[tuple[int, int, int, int, float]]:
+def _detect_onnx(
+    img: np.ndarray, model_path: str, confidence: float = 0.35, iou_threshold: float = 0.45
+) -> list[tuple[int, int, int, int, float]]:
     """执行 YOLO ONNX 推理。"""
     sess = _load_session(model_path)
     h, w = img.shape[:2]
@@ -109,9 +111,8 @@ def _detect_onnx(img: np.ndarray, model_path: str,
     resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
     pad_x, pad_y = (input_w - nw) // 2, (input_h - nh) // 2
     canvas = np.full((input_h, input_w, 3), 114, dtype=np.uint8)
-    canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
-    blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (input_w, input_h),
-                                 swapRB=True, crop=False)
+    canvas[pad_y : pad_y + nh, pad_x : pad_x + nw] = resized
+    blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (input_w, input_h), swapRB=True, crop=False)
     if sess is not None:
         out = sess.run(None, {sess.get_inputs()[0].name: blob})[0]
     else:
@@ -158,9 +159,15 @@ def _detect_fallback(img: np.ndarray) -> tuple[tuple[int, int, int, int], float]
     h, w = gray.shape
     edges = cv2.Canny(gray, 60, 160)
     circles = cv2.HoughCircles(
-        cv2.GaussianBlur(gray, (9, 9), 2), cv2.HOUGH_GRADIENT, dp=1.5,
-        minDist=min(h, w) // 2, param1=120, param2=55,
-        minRadius=min(h, w) // 8, maxRadius=min(h, w) // 2)
+        cv2.GaussianBlur(gray, (9, 9), 2),
+        cv2.HOUGH_GRADIENT,
+        dp=1.5,
+        minDist=min(h, w) // 2,
+        param1=120,
+        param2=55,
+        minRadius=min(h, w) // 8,
+        maxRadius=min(h, w) // 2,
+    )
 
     if circles is not None:
         for cx, cy, r in circles[0][:3]:
@@ -168,16 +175,21 @@ def _detect_fallback(img: np.ndarray) -> tuple[tuple[int, int, int, int], float]
             if support < 0.45:
                 continue
             rr = int(r * 1.12)
-            box = (max(0, int(cx) - rr), max(0, int(cy) - rr),
-                   min(w - 1, int(cx) + rr), min(h - 1, int(cy) + rr))
+            box = (
+                max(0, int(cx) - rr),
+                max(0, int(cy) - rr),
+                min(w - 1, int(cx) + rr),
+                min(h - 1, int(cy) + rr),
+            )
             return box, min(0.85, 0.35 + support * 0.5)
 
     # 圆形验证失败：矩形表盘 / 特写场景，整图兜底
     return (0, 0, w - 1, h - 1), 0.60
 
 
-def _circle_edge_support(edges: np.ndarray, cx: float, cy: float, r: float,
-                         samples: int = 180) -> float:
+def _circle_edge_support(
+    edges: np.ndarray, cx: float, cy: float, r: float, samples: int = 180
+) -> float:
     """圆周落在 Canny 边缘（±2px）内的比例。"""
     hit = 0
     for t in np.linspace(0, 2 * np.pi, samples, endpoint=False):

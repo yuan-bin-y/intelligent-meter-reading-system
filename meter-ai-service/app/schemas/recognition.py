@@ -42,12 +42,14 @@ class RecognitionResult(BaseModel):
     message: str = "识别成功"
 
     # 模型诊断字段
-    raw_text: Optional[str] = Field(None, alias="rawText")          # 未修改的 OCR 文本
-    recognizer: str = Field("opencv", alias="recognizer")           # mock/opencv/paddleocr
+    raw_text: Optional[str] = Field(None, alias="rawText")  # 未修改的 OCR 文本
+    recognizer: str = Field("opencv", alias="recognizer")  # mock/opencv/paddleocr
     display_box: Optional[list[int]] = Field(None, alias="displayBox")  # 显示区域 [x,y,w,h]
-    warnings: list[str] = Field(default_factory=list)               # 低置信度/定位失败/格式异常等
-    fail_stage: Optional[str] = Field(None, alias="failStage")      # 失败阶段标记
-    ocr_variants: list[dict] = Field(default_factory=list, alias="ocrVariants")  # 各预处理变体原始输出
+    warnings: list[str] = Field(default_factory=list)  # 低置信度/定位失败/格式异常等
+    fail_stage: Optional[str] = Field(None, alias="failStage")  # 失败阶段标记
+    ocr_variants: list[dict] = Field(
+        default_factory=list, alias="ocrVariants"
+    )  # 各预处理变体原始输出
 
     model_config = {"populate_by_name": True}
 
@@ -60,7 +62,7 @@ class ModelInfo(BaseModel):
     meter_types: list[str] = Field(default_factory=list, alias="meterTypes")
     format: str = "onnx"
     size_bytes: int = Field(0, alias="sizeBytes")
-    status: str = "PLACEHOLDER"   # PLACEHOLDER / READY（有待测准确率时才可写 READY）
+    status: str = "PLACEHOLDER"  # PLACEHOLDER / READY（有待测准确率时才可写 READY）
     accuracy_note: str = Field("待训练/待测试", alias="accuracyNote")
 
     model_config = {"populate_by_name": True}

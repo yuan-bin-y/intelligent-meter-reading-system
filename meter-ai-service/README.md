@@ -25,6 +25,10 @@ py -3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 ## 测试
 
+测试目录、`pytest.ini`、Mock/OpenCV 基线和指针实验不随 Git 提交，本机原有文件继续保留。正式服务默认使用 PaddleOCR，正式路径不依赖这些本地模块。
+
+本机具备测试文件和依赖时执行：
+
 ```powershell
 cd meter-ai-service
 py -3.12 -m pytest -q

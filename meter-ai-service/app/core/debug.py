@@ -38,27 +38,34 @@ class Tracer:
         cv2.imwrite(str(path), img)
         self.log(f"图片 {path.name}")
 
-    def draw_boxes(self, tag: str, image: np.ndarray,
-                   boxes: list[tuple], color: tuple = (0, 200, 0)) -> None:
+    def draw_boxes(
+        self, tag: str, image: np.ndarray, boxes: list[tuple], color: tuple = (0, 200, 0)
+    ) -> None:
         """绘制候选框后保存，box 格式为 (x, y, w, h)。"""
         if not self.enabled or image is None:
             return
         vis = image.copy()
         if vis.ndim == 2:
             vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-        for (x, y, w, h) in boxes:
+        for x, y, w, h in boxes:
             cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
         self.save(tag, vis)
 
-    def save_chars(self, tag: str, binary: np.ndarray,
-                   cells: list[tuple], chars: list[str], scores: list[float]) -> None:
+    def save_chars(
+        self,
+        tag: str,
+        binary: np.ndarray,
+        cells: list[tuple],
+        chars: list[str],
+        scores: list[float],
+    ) -> None:
         """保存字符切片和识别结果。"""
         if not self.enabled:
             return
         out_dir = Path(self.dir) / tag
         out_dir.mkdir(parents=True, exist_ok=True)
         for i, ((x, y, w, h), ch, sc) in enumerate(zip(cells, chars, scores)):
-            patch = binary[max(0, y - 2):y + h + 2, max(0, x - 2):x + w + 2]
+            patch = binary[max(0, y - 2) : y + h + 2, max(0, x - 2) : x + w + 2]
             if patch.size == 0:
                 continue
             cv2.imwrite(str(out_dir / f"{i:02d}_x{x}_{ch}_{sc:.2f}.png"), patch)
@@ -72,6 +79,5 @@ class Tracer:
     def dump(self) -> str:
         """保存并返回调试日志。"""
         if self.enabled:
-            (Path(self.dir) / "trace.log").write_text(
-                "\n".join(self.lines), encoding="utf-8")
+            (Path(self.dir) / "trace.log").write_text("\n".join(self.lines), encoding="utf-8")
         return "\n".join(self.lines)

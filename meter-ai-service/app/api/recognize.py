@@ -8,16 +8,18 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..core.config import settings
-from ..core.debug import Tracer
 from ..quality.checker import check_quality, decode_image
-from ..registry import RecognizerInitError, get_recognizer, list_models, recognizer_kind
+from ..registry import RecognizerInitError, get_recognizer, list_models
 from ..schemas.recognition import ErrorResponse, QualityReport, RecognitionResult
 
 router = APIRouter(prefix="/api/v1", tags=["recognition"])
 
 
-@router.post("/recognize", response_model=RecognitionResult,
-             responses={400: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
+@router.post(
+    "/recognize",
+    response_model=RecognitionResult,
+    responses={400: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+)
 async def recognize(
     image: UploadFile = File(..., alias="image"),
     meter_type: str | None = Form(None, alias="meter_type"),

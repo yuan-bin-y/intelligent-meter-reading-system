@@ -20,18 +20,30 @@ class MeterRecognizer(ABC):
     version: str = "dev"
 
     @abstractmethod
-    def recognize(self, image: np.ndarray,
-                  meter_type_hint: str | None = None,
-                  dial_type_hint: str | None = None,
-                  previous_reading: str | None = None) -> RecognitionResult:
+    def recognize(
+        self,
+        image: np.ndarray,
+        meter_type_hint: str | None = None,
+        dial_type_hint: str | None = None,
+        previous_reading: str | None = None,
+    ) -> RecognitionResult:
         """识别表盘图像。"""
 
     # 公共结果字段
-    def build_result(self, *, meter_type: str, dial_type: str, reading: str | None,
-                     char_conf: float, detector_conf: float,
-                     quality_score: float, quality_issues: list[str],
-                     review_threshold: float, inference_ms: int,
-                     message: str = "识别成功") -> RecognitionResult:
+    def build_result(
+        self,
+        *,
+        meter_type: str,
+        dial_type: str,
+        reading: str | None,
+        char_conf: float,
+        detector_conf: float,
+        quality_score: float,
+        quality_issues: list[str],
+        review_threshold: float,
+        inference_ms: int,
+        message: str = "识别成功",
+    ) -> RecognitionResult:
         confidence = round(max(0.0, min(1.0, detector_conf * char_conf)), 4)
         needs_review = (
             reading is None

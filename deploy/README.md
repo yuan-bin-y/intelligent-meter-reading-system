@@ -8,6 +8,8 @@
 
 视觉模型权重不在 Git 中。构建 Python 镜像前，先按照 [`meter-ai-service/models/README.md`](../meter-ai-service/models/README.md) 将模型文件放到本机对应路径；Docker 构建会检查文件是否存在。
 
+前端 `meter-web` 也只保留在本机，不在 Git 中。完整 Compose 部署包含前端，新拉取的仓库需要先单独准备该目录；只启动后端时，可以指定需要的后端服务，避免构建前端。
+
 在项目根目录运行：
 
 ```powershell

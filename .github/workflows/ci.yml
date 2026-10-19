@@ -1,0 +1,51 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Checkstyle, SpotBugs and build
+        run: mvn --batch-mode --no-transfer-progress -DskipTests verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: java-reports
+          path: |
+            **/target/spotbugsXml.xml
+            **/target/checkstyle-result.xml
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: meter-ai-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: meter-ai-service/requirements-ci.txt
+      - run: python -m pip install -r requirements-ci.txt
+      - run: ruff check app
+      - run: ruff format --check app

@@ -10,8 +10,9 @@ def deskew(img: np.ndarray, max_angle: float = 10.0) -> np.ndarray:
     """根据主方向校正小角度倾斜。"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
     edges = cv2.Canny(gray, 60, 160)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=120,
-                            minLineLength=min(img.shape[:2]) // 4, maxLineGap=12)
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180, threshold=120, minLineLength=min(img.shape[:2]) // 4, maxLineGap=12
+    )
     if lines is None:
         return img
     angles = []
@@ -27,8 +28,7 @@ def deskew(img: np.ndarray, max_angle: float = 10.0) -> np.ndarray:
         return img
     h, w = img.shape[:2]
     M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
-    return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC,
-                          borderMode=cv2.BORDER_REPLICATE)
+    return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
 
 def perspective_correction(img: np.ndarray, quad_points: np.ndarray) -> np.ndarray:
