@@ -28,6 +28,7 @@ import com.byy.meterreading.vo.meter.MeterListItemVO;
 import com.byy.meterreading.vo.meter.MeterVersionVO;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -36,6 +37,7 @@ import java.util.Map;
  * 表具管理业务实现。
  */
 @Service
+@Transactional
 public class MeterServiceImpl implements MeterService {
 
     private static final Map<MeterType, String> METER_UNITS = Map.of(

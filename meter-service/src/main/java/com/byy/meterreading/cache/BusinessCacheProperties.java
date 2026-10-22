@@ -14,11 +14,10 @@ import java.time.Duration;
 public class BusinessCacheProperties {
 
     private boolean enabled = true;
-    private Duration ttl = Duration.ofMinutes(10);
-    private Duration ttlJitter = Duration.ofMinutes(2);
+    private Duration ttl = Duration.ofSeconds(60);
+    private Duration ttlJitter = Duration.ofSeconds(15);
     private Duration nullTtl = Duration.ofSeconds(45);
     private Duration lockWait = Duration.ofSeconds(1);
-    private Duration lockLease = Duration.ofSeconds(10);
 
     @PostConstruct
     void validate() {
@@ -26,7 +25,6 @@ public class BusinessCacheProperties {
         requireNotNegative(ttlJitter, "BUSINESS_CACHE_TTL_JITTER");
         requirePositive(nullTtl, "BUSINESS_CACHE_NULL_TTL");
         requireNotNegative(lockWait, "BUSINESS_CACHE_LOCK_WAIT");
-        requirePositive(lockLease, "BUSINESS_CACHE_LOCK_LEASE");
     }
 
     private void requirePositive(Duration value, String name) {
@@ -81,11 +79,4 @@ public class BusinessCacheProperties {
         this.lockWait = lockWait;
     }
 
-    public Duration getLockLease() {
-        return lockLease;
-    }
-
-    public void setLockLease(Duration lockLease) {
-        this.lockLease = lockLease;
-    }
 }

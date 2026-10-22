@@ -2,6 +2,7 @@ package com.byy.meterreading.maintenance;
 
 import com.byy.meterreading.common.trace.TraceIdContext;
 import com.byy.meterreading.service.DeviceHeartbeatService;
+import com.byy.meterreading.cache.CacheWriteGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,10 +17,12 @@ public class RedisMaintenanceJob {
     private static final Logger log = LoggerFactory.getLogger(RedisMaintenanceJob.class);
     private final JdbcTemplate jdbc;
     private final DeviceHeartbeatService heartbeatService;
+    private final CacheWriteGuard cacheGuard;
 
-    public RedisMaintenanceJob(JdbcTemplate jdbc, DeviceHeartbeatService heartbeatService) {
+    public RedisMaintenanceJob(JdbcTemplate jdbc, DeviceHeartbeatService heartbeatService, CacheWriteGuard cacheGuard) {
         this.jdbc = jdbc;
         this.heartbeatService = heartbeatService;
+        this.cacheGuard = cacheGuard;
     }
 
     @Scheduled(fixedDelayString = "${app.redis-maintenance.interval-ms:5000}")
@@ -55,10 +58,13 @@ public class RedisMaintenanceJob {
         }
         try (var ignored = TraceIdContext.open(task.traceId())) {
             try {
-                if (!"HEARTBEAT".equals(task.type())) {
+                if ("CACHE".equals(task.type())) {
+                    cacheGuard.invalidate(task.key());
+                } else if ("HEARTBEAT".equals(task.type())) {
+                    heartbeatService.clearHeartbeatBeforeVersion(Long.valueOf(task.key()), task.version());
+                } else {
                     throw new IllegalStateException("未知Redis清理类型");
                 }
-                heartbeatService.clearHeartbeatBeforeVersion(Long.valueOf(task.key()), task.version());
                 jdbc.update("""
                         UPDATE redis_maintenance_task SET status = 'DONE', lease_until = NULL,
                           last_error = NULL WHERE id = ? AND lease_token = ?

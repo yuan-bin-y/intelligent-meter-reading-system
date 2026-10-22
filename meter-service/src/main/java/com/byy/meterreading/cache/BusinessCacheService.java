@@ -3,7 +3,9 @@ package com.byy.meterreading.cache;
 import com.byy.meterreading.vo.device.DeviceDetailVO;
 import com.byy.meterreading.vo.meter.MeterDetailVO;
 import com.byy.meterreading.vo.user.AssignableRoleVO;
+import com.byy.meterreading.maintenance.RedisMaintenanceQueue;
 import org.redisson.api.RLock;
+import org.redisson.api.RFencedLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,28 +37,34 @@ public class BusinessCacheService {
 
     private static final String NULL_VALUE = "__NULL__";
     private static final String METER_DETAIL_PREFIX =
-            "meter:cache:meter:detail:";
+            "meter:cache:v2:{meter:";
     private static final String DEVICE_DETAIL_PREFIX =
-            "meter:cache:device:detail:";
+            "meter:cache:v2:{device:";
     private static final String ROLE_LIST_KEY =
-            "meter:cache:role:assignable";
+            "meter:cache:v2:{role:assignable}";
     private static final String LOCK_PREFIX = "meter:lock:cache:";
 
     private final StringRedisTemplate redisTemplate;
     private final RedissonClient redissonClient;
     private final ObjectMapper objectMapper;
     private final BusinessCacheProperties properties;
+    private final CacheWriteGuard writeGuard;
+    private final RedisMaintenanceQueue maintenanceQueue;
 
     public BusinessCacheService(
             StringRedisTemplate redisTemplate,
             RedissonClient redissonClient,
             ObjectMapper objectMapper,
-            BusinessCacheProperties properties
+            BusinessCacheProperties properties,
+            CacheWriteGuard writeGuard,
+            RedisMaintenanceQueue maintenanceQueue
     ) {
         this.redisTemplate = redisTemplate;
         this.redissonClient = redissonClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.writeGuard = writeGuard;
+        this.maintenanceQueue = maintenanceQueue;
     }
 
     public MeterDetailVO getMeterDetail(
@@ -64,7 +72,7 @@ public class BusinessCacheService {
             Supplier<MeterDetailVO> loader
     ) {
         return getOrLoad(
-                METER_DETAIL_PREFIX + meterId,
+                METER_DETAIL_PREFIX + meterId + "}",
                 MeterDetailVO.class,
                 loader
         );
@@ -75,7 +83,7 @@ public class BusinessCacheService {
             Supplier<DeviceDetailVO> loader
     ) {
         return getOrLoad(
-                DEVICE_DETAIL_PREFIX + deviceId,
+                DEVICE_DETAIL_PREFIX + deviceId + "}",
                 DeviceDetailVO.class,
                 loader
         );
@@ -98,11 +106,11 @@ public class BusinessCacheService {
     }
 
     public void evictMeterDetailAfterCommit(Long meterId) {
-        evictAfterCommit(METER_DETAIL_PREFIX + meterId);
+        evictAfterCommit(METER_DETAIL_PREFIX + meterId + "}");
     }
 
     public void evictDeviceDetailAfterCommit(Long deviceId) {
-        evictAfterCommit(DEVICE_DETAIL_PREFIX + deviceId);
+        evictAfterCommit(DEVICE_DETAIL_PREFIX + deviceId + "}");
     }
 
     public void evictAssignableRolesAfterCommit() {
@@ -138,38 +146,30 @@ public class BusinessCacheService {
             return loader.get();
         }
 
-        RLock lock;
+        RFencedLock lock;
         try {
-            lock = redissonClient.getLock(LOCK_PREFIX + cacheKey);
+            lock = redissonClient.getFencedLock(LOCK_PREFIX + cacheKey);
         } catch (RuntimeException exception) {
             log.warn("获取业务缓存重建锁失败，已回退 MySQL，key={}",
                     cacheKey, exception);
             return loader.get();
         }
 
-        boolean locked = false;
+        Long fence = null;
         try {
-            locked = lock.tryLock(
+            // 不指定leaseTime，采用Redisson看门狗续期。写入仍需独立的原子令牌校验。
+            fence = lock.tryLockAndGetToken(
                     properties.getLockWait().toMillis(),
-                    properties.getLockLease().toMillis(),
                     TimeUnit.MILLISECONDS
             );
-            if (!locked) {
-                // 锁等待超时后再读一次；仍未命中时直查数据库，保证接口可用。
-                CacheLookup<T> retryLookup = read(cacheKey, resultType);
-                return retryLookup.hit()
-                        ? retryLookup.value()
-                        : loader.get();
-            }
-
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            log.warn("等待业务缓存重建锁时线程被中断，key={}", cacheKey);
-            return loader.get();
         } catch (RuntimeException exception) {
             log.warn("获取业务缓存重建锁失败，已回退 MySQL，key={}",
                     cacheKey, exception);
-            return loader.get();
+        }
+        if (fence == null) {
+            // 回源不放在Redis异常捕获范围内，数据库失败不能导致同一请求重复查询。
+            CacheLookup<T> retryLookup = read(cacheKey, resultType);
+            return retryLookup.hit() ? retryLookup.value() : loader.get();
         }
 
         try {
@@ -180,11 +180,12 @@ public class BusinessCacheService {
             }
 
             // 数据库查询异常必须原样抛出，不能被当成缓存异常后重复查询。
+            String generation = beginSafely(cacheKey, fence);
             T loaded = loader.get();
-            write(cacheKey, loaded);
+            write(cacheKey, loaded, fence, generation);
             return loaded;
         } finally {
-            unlockSafely(lock, locked, cacheKey);
+            unlockSafely(lock, true, cacheKey);
         }
     }
 
@@ -209,21 +210,20 @@ public class BusinessCacheService {
         }
     }
 
-    private void write(String cacheKey, Object value) {
+    private String beginSafely(String cacheKey, long fence) {
         try {
-            if (value == null) {
-                redisTemplate.opsForValue().set(
-                        cacheKey,
-                        NULL_VALUE,
-                        properties.getNullTtl()
-                );
-                return;
-            }
-            redisTemplate.opsForValue().set(
-                    cacheKey,
-                    objectMapper.writeValueAsString(value),
-                    randomizedTtl()
-            );
+            return writeGuard.begin(cacheKey, fence);
+        } catch (RuntimeException exception) {
+            log.warn("登记缓存重建令牌失败，本次仅回源，key={}", cacheKey, exception);
+            return null;
+        }
+    }
+
+    private void write(String cacheKey, Object value, long fence, String generation) {
+        try {
+            writeGuard.write(cacheKey, fence, generation,
+                    value == null ? NULL_VALUE : objectMapper.writeValueAsString(value),
+                    value == null ? properties.getNullTtl() : randomizedTtl());
         } catch (RuntimeException exception) {
             // 数据已经从 MySQL 查询成功，缓存写入失败只记录日志。
             log.warn("写入业务缓存失败，key={}", cacheKey, exception);
@@ -234,9 +234,8 @@ public class BusinessCacheService {
      * 有事务时等待提交成功再删缓存；无事务时立即删除。
      */
     private void evictAfterCommit(String cacheKey) {
-        if (!properties.isEnabled()) {
-            return;
-        }
+        // 先持久化；进程在提交后回调执行前宕机，也不会丢失失效任务。
+        maintenanceQueue.invalidateCache(cacheKey);
         if (TransactionSynchronizationManager.isSynchronizationActive()
                 && TransactionSynchronizationManager
                 .isActualTransactionActive()) {
@@ -255,9 +254,9 @@ public class BusinessCacheService {
 
     private void evict(String cacheKey) {
         try {
-            redisTemplate.delete(cacheKey);
+            writeGuard.invalidate(cacheKey);
         } catch (RuntimeException exception) {
-            // MySQL 已成功提交，缓存删除失败依靠较短 TTL 最终恢复一致。
+            // MySQL 已提交，由持久化任务重试；TTL只是故障持续期间的陈旧时间上界。
             log.warn("删除业务缓存失败，key={}", cacheKey, exception);
         }
     }

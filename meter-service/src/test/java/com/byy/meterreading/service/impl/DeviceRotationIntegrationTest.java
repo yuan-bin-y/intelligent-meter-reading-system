@@ -1,6 +1,7 @@
 package com.byy.meterreading.service.impl;
 
 import com.byy.meterreading.cache.BusinessCacheService;
+import com.byy.meterreading.cache.CacheWriteGuard;
 import com.byy.meterreading.config.DeviceHeartbeatProperties;
 import com.byy.meterreading.dto.device.ResetDeviceSecretDTO;
 import com.byy.meterreading.maintenance.RedisMaintenanceJob;
@@ -73,14 +74,14 @@ class DeviceRotationIntegrationTest {
         var unavailable = mock(DeviceHeartbeatService.class);
         doThrow(new IllegalStateException("injected Redis outage")).when(unavailable)
                 .clearHeartbeatBeforeVersion(anyLong(), anyInt());
-        new RedisMaintenanceJob(infra.jdbc, unavailable).drain();
+        new RedisMaintenanceJob(infra.jdbc, unavailable, new CacheWriteGuard(infra.redis)).drain();
         assertEquals("PENDING", infra.jdbc.queryForObject(
                 "SELECT status FROM redis_maintenance_task WHERE resource_key = ?", String.class, Long.toString(id)));
         infra.jdbc.update("UPDATE redis_maintenance_task SET next_attempt_at = NOW() WHERE resource_key = ?",
                 Long.toString(id));
         var heartbeat = new DeviceHeartbeatServiceImpl(infra.redis, new DeviceHeartbeatProperties());
         heartbeat.heartbeat(id, "IT-" + id, 2);
-        new RedisMaintenanceJob(infra.jdbc, heartbeat).drain();
+        new RedisMaintenanceJob(infra.jdbc, heartbeat, new CacheWriteGuard(infra.redis)).drain();
         assertTrue(heartbeat.isOnline(id, 2)); // 重试清理不能删除新凭证产生的心跳。
         heartbeat.heartbeat(id, "IT-" + id, 1);
         assertTrue(heartbeat.isOnline(id, 2)); // 在途旧请求不能覆盖新心跳。
