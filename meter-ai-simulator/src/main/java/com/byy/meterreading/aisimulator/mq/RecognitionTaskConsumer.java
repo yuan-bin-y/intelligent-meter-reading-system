@@ -254,17 +254,15 @@ public class RecognitionTaskConsumer {
                 if (!(item instanceof Map<?, ?> death)) {
                     continue;
                 }
-                if (!RecognitionMqTopology.RECOGNITION_QUEUE.equals(
-                        String.valueOf(death.get("queue"))
-                )) {
+                String queue = String.valueOf(death.get("queue"));
+                if (!RecognitionMqTopology.RECOGNITION_QUEUE.equals(queue)
+                        && !"meter.recognition.queue".equals(queue)) {
                     continue;
                 }
                 Object count = death.get("count");
                 if (count instanceof Number number) {
-                    previousFailures = Math.max(
-                            previousFailures,
-                            number.longValue()
-                    );
+                    // Shovel迁移保留旧x-death。跨旧、新主队列的失败次数需要累加。
+                    previousFailures += Math.min(number.longValue(), Integer.MAX_VALUE);
                 }
             }
         }

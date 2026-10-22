@@ -61,7 +61,8 @@ public class AiRecognitionTaskServiceImpl
     private static final String RECOGNITION_NO_PREFIX = "AIR-";
     private static final String AGGREGATE_TYPE = "AI_RECOGNITION_TASK";
     private static final String EVENT_TYPE = "RECOGNITION_TASK_CREATED";
-    private static final String EXCHANGE_NAME = "meter.recognition.exchange";
+    private static final String EXCHANGE_NAME =
+            com.byy.meterreading.recognition.mq.RecognitionMqConfig.RECOGNITION_EXCHANGE;
     private static final String ROUTING_KEY = "meter.recognition.task";
 
     private final AiRecognitionTaskMapper recognitionTaskMapper;

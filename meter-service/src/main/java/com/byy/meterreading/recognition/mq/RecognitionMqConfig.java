@@ -22,23 +22,23 @@ import org.springframework.context.annotation.Configuration;
 public class RecognitionMqConfig {
 
     public static final String RECOGNITION_EXCHANGE =
-            "meter.recognition.exchange";
+            "meter.recognition.v2.exchange";
     public static final String RECOGNITION_QUEUE =
-            "meter.recognition.queue";
+            "meter.recognition.v2.queue";
     public static final String RECOGNITION_ROUTING_KEY =
             "meter.recognition.task";
 
     public static final String RETRY_EXCHANGE =
-            "meter.recognition.retry.exchange";
+            "meter.recognition.v2.retry.exchange";
     public static final String RETRY_QUEUE =
-            "meter.recognition.retry.queue";
+            "meter.recognition.v2.retry.queue";
     public static final String RETRY_ROUTING_KEY =
             "meter.recognition.retry";
 
     public static final String DEAD_LETTER_EXCHANGE =
-            "meter.recognition.dlx";
+            "meter.recognition.v2.dlx";
     public static final String DEAD_LETTER_QUEUE =
-            "meter.recognition.dlq";
+            "meter.recognition.v2.dlq";
     public static final String DEAD_LETTER_ROUTING_KEY =
             "meter.recognition.dead";
 
@@ -66,6 +66,10 @@ public class RecognitionMqConfig {
     @Bean
     public Queue recognitionQueue() {
         return QueueBuilder.durable(RECOGNITION_QUEUE)
+                .quorum()
+                .withArgument("x-dead-letter-strategy", "at-least-once")
+                .withArgument("x-overflow", "reject-publish")
+                .withArgument("x-max-length", 100_000)
                 .deadLetterExchange(RETRY_EXCHANGE)
                 .deadLetterRoutingKey(RETRY_ROUTING_KEY)
                 .build();
@@ -77,6 +81,10 @@ public class RecognitionMqConfig {
     @Bean
     public Queue recognitionRetryQueue() {
         return QueueBuilder.durable(RETRY_QUEUE)
+                .quorum()
+                .withArgument("x-dead-letter-strategy", "at-least-once")
+                .withArgument("x-overflow", "reject-publish")
+                .withArgument("x-max-length", 100_000)
                 .ttl(RETRY_DELAY_MILLIS)
                 .deadLetterExchange(RECOGNITION_EXCHANGE)
                 .deadLetterRoutingKey(RECOGNITION_ROUTING_KEY)
@@ -86,7 +94,9 @@ public class RecognitionMqConfig {
     /** 最终失败消息由人工排查或后续补偿程序处理。 */
     @Bean
     public Queue recognitionDeadLetterQueue() {
-        return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
+        return QueueBuilder.durable(DEAD_LETTER_QUEUE).quorum()
+                .withArgument("x-overflow", "reject-publish")
+                .withArgument("x-max-length", 100_000).build();
     }
 
     @Bean

@@ -25,6 +25,8 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: test
       RABBITMQ_DEFAULT_PASS: test-only-password
+      # 测试缩短内部Confirm重试周期；生产不覆盖Broker默认值。
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit dead_letter_worker_publisher_confirm_timeout 1000"
     ports: ["127.0.0.1:15680:5672", "127.0.0.1:15681:15672"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]

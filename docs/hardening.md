@@ -32,6 +32,22 @@
 
 Prometheus新增 `business_cache_load_active`、`business_cache_load_inflight`、`business_cache_load_rejected_total`、`business_cache_load_timeout_total` 和 `business_cache_load_coalesced_total`。Redis读失败后短暂跳过重复探测，减少故障期间日志与连接风暴。
 
+## RabbitMQ死信保障与升级
+
+API与Worker同时改为v2交换机/队列，主队列、重试队列、最终DLQ均为Quorum。主队列与重试队列设置 `x-dead-letter-strategy=at-least-once`、`x-overflow=reject-publish`，使内部死信转发等待目标队列确认。队列最多10万条，满额拒绝新发布；Outbox或原队列保留待重试消息。最终DLQ仍由Worker显式发布，核对Confirm与Return后才ACK原消息。重复投递不可避免，eventId和attemptNo仍需参与业务幂等。
+
+单节点Quorum不能提供跨节点高可用。生产保障需要至少三个RabbitMQ节点并确认每个队列拥有三个成员；多数副本永久丢失、磁盘损坏或人为删除仍可能丢数据，不能宣称“绝不丢失”。参考[Quorum队列官方说明](https://www.rabbitmq.com/docs/quorum-queues)。
+
+已有classic队列不能原地改类型。升级顺序：
+
+1. 停止旧API与Worker，保留RabbitMQ数据卷和旧队列。
+2. 部署新API，让Flyway V23调整未完成Outbox的交换机地址，并声明v2拓扑。暂不启动新Worker。
+3. 启用 `rabbitmq_shovel` 和 `rabbitmq_shovel_management` 插件（Compose插件文件已包含）。通过环境变量设置管理员账号以及Broker内部可访问的 `RABBITMQ_MIGRATION_URI`，格式为 `amqp://用户:URL编码的密码@rabbitmq:5672/%2f`。
+4. 执行 `./scripts/migrate-recognition-queues.ps1 -ManagementUrl http://localhost:15673`。脚本安排Shovel以 `on-confirm` 迁移旧主队列、旧重试队列到新主队列，旧DLQ到新DLQ。旧重试消息迁移后可提前执行一次，但保留eventId、attemptNo和x-death计数。
+5. 在管理页面检查旧队列Ready/Unacked均为0、Shovel没有失败，再启动新Worker。脚本不删除旧队列、消息或数据卷。升级前已过期/失败的历史事件仍需按业务状态判断是否人工重试。
+
+Shovel只在目标确认后ACK源消息；中途故障可能重复转发，由业务幂等处理。参考[官方Shovel确认语义](https://www.rabbitmq.com/docs/4.3/shovel-dynamic)。迁移凭据是Broker运行参数中的敏感信息，应限制管理权限，完成后确认临时Shovel已自动结束。
+
 ## 运行隔离测试
 
 测试容器与日常业务容器分开，不读取本地配置、OSS、JWT密钥或模型文件：
