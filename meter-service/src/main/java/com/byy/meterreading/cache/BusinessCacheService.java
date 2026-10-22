@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -50,6 +51,8 @@ public class BusinessCacheService {
     private final BusinessCacheProperties properties;
     private final CacheWriteGuard writeGuard;
     private final RedisMaintenanceQueue maintenanceQueue;
+    private final DatabaseLoadGate loadGate;
+    private final AtomicLong redisRetryAt = new AtomicLong();
 
     public BusinessCacheService(
             StringRedisTemplate redisTemplate,
@@ -57,7 +60,8 @@ public class BusinessCacheService {
             ObjectMapper objectMapper,
             BusinessCacheProperties properties,
             CacheWriteGuard writeGuard,
-            RedisMaintenanceQueue maintenanceQueue
+            RedisMaintenanceQueue maintenanceQueue,
+            DatabaseLoadGate loadGate
     ) {
         this.redisTemplate = redisTemplate;
         this.redissonClient = redissonClient;
@@ -65,6 +69,7 @@ public class BusinessCacheService {
         this.properties = properties;
         this.writeGuard = writeGuard;
         this.maintenanceQueue = maintenanceQueue;
+        this.loadGate = loadGate;
     }
 
     public MeterDetailVO getMeterDetail(
@@ -135,7 +140,7 @@ public class BusinessCacheService {
             Supplier<T> loader
     ) {
         if (!properties.isEnabled()) {
-            return loader.get();
+            return loadGate.load(cacheKey, loader);
         }
 
         CacheLookup<T> firstLookup = read(cacheKey, resultType);
@@ -143,9 +148,13 @@ public class BusinessCacheService {
             return firstLookup.value();
         }
         if (!firstLookup.redisAvailable()) {
-            return loader.get();
+            return loadGate.load(cacheKey, loader);
         }
 
+        return loadGate.load(cacheKey, () -> rebuild(cacheKey, resultType, loader));
+    }
+
+    private <T> T rebuild(String cacheKey, JavaType resultType, Supplier<T> loader) {
         RFencedLock lock;
         try {
             lock = redissonClient.getFencedLock(LOCK_PREFIX + cacheKey);
@@ -193,6 +202,9 @@ public class BusinessCacheService {
             String cacheKey,
             JavaType resultType
     ) {
+        if (System.nanoTime() < redisRetryAt.get()) {
+            return CacheLookup.unavailable();
+        }
         try {
             String cached = redisTemplate.opsForValue().get(cacheKey);
             if (cached == null) {
@@ -205,7 +217,11 @@ public class BusinessCacheService {
                     objectMapper.readValue(cached, resultType)
             );
         } catch (RuntimeException exception) {
-            log.warn("读取业务缓存失败，key={}", cacheKey, exception);
+            long now = System.nanoTime();
+            long previous = redisRetryAt.getAndSet(now + TimeUnit.SECONDS.toNanos(1));
+            if (previous < now) {
+                log.warn("读取业务缓存失败，短暂跳过Redis探测，key={}", cacheKey, exception);
+            }
             return CacheLookup.unavailable();
         }
     }
@@ -220,6 +236,9 @@ public class BusinessCacheService {
     }
 
     private void write(String cacheKey, Object value, long fence, String generation) {
+        if (!loadGate.mayPublish()) {
+            return;
+        }
         try {
             writeGuard.write(cacheKey, fence, generation,
                     value == null ? NULL_VALUE : objectMapper.writeValueAsString(value),

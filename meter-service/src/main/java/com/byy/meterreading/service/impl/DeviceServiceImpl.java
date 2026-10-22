@@ -41,7 +41,6 @@ import java.time.LocalDateTime;
  * 采集设备档案管理业务实现。
  */
 @Service
-@Transactional
 public class DeviceServiceImpl implements DeviceService {
 
     private static final int INITIAL_CREDENTIAL_VERSION = 1;
@@ -76,6 +75,7 @@ public class DeviceServiceImpl implements DeviceService {
      * 新建设备默认停用，设备编号和类型创建后不通过资料接口修改。
      */
     @Override
+    @Transactional
     public CreateDeviceVO createDevice(
             Long operatorId,
             CreateDeviceDTO createDTO
@@ -126,6 +126,7 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+    @Transactional
     public DeviceVersionVO updateDevice(
             Long operatorId,
             Long deviceId,
@@ -184,6 +185,7 @@ public class DeviceServiceImpl implements DeviceService {
      * 明文密钥只通过本次响应返回。
      */
     @Override
+    @Transactional
     public ResetDeviceSecretVO resetDeviceSecret(
             Long operatorId,
             Long deviceId,
@@ -293,6 +295,7 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+    @Transactional
     public DeviceVersionVO enableDevice(
             Long operatorId,
             Long deviceId,
@@ -307,6 +310,7 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+    @Transactional
     public DeviceVersionVO disableDevice(
             Long operatorId,
             Long deviceId,
@@ -325,6 +329,7 @@ public class DeviceServiceImpl implements DeviceService {
      * 设备必须先停用且解除全部表具绑定后才能逻辑删除。
      */
     @Override
+    @Transactional
     public void deleteDevice(
             Long operatorId,
             Long deviceId,

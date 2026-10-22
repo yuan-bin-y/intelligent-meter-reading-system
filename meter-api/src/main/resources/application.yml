@@ -3,6 +3,14 @@ spring:
     name: intelligent-meter-reading-system
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
+  datasource:
+    hikari:
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:2000}
+      validation-timeout: 1000
+      maximum-pool-size: ${DB_POOL_SIZE:12}
+      data-source-properties:
+        connectTimeout: 2000
+        socketTimeout: 6000
   servlet:
     multipart:
       max-file-size: ${OSS_MAX_FILE_SIZE:10MB}
@@ -51,6 +59,10 @@ management:
       # 所有指标附加统一应用名，Prometheus 多服务查询时可以直接筛选。
       application: ${spring.application.name}
 
+mybatis-plus:
+  configuration:
+    default-statement-timeout: ${DB_STATEMENT_TIMEOUT_SECONDS:3}
+
 app:
   cache:
     business:
@@ -59,6 +71,8 @@ app:
       ttl-jitter: ${BUSINESS_CACHE_TTL_JITTER:PT15S}
       null-ttl: ${BUSINESS_CACHE_NULL_TTL:PT45S}
       lock-wait: ${BUSINESS_CACHE_LOCK_WAIT:PT1S}
+      load-concurrency: ${BUSINESS_CACHE_LOAD_CONCURRENCY:8}
+      load-timeout: ${BUSINESS_CACHE_LOAD_TIMEOUT:PT5S}
   realtime:
     timeout: ${SSE_TIMEOUT:PT30M}
     heartbeat-interval-ms: ${SSE_HEARTBEAT_INTERVAL_MS:25000}

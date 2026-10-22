@@ -2,6 +2,7 @@ package com.byy.meterreading.web.handler;
 
 import com.byy.meterreading.auth.exception.RateLimitExceededException;
 import com.byy.meterreading.common.exception.ObjectStorageException;
+import com.byy.meterreading.common.exception.DatabaseBusyException;
 import com.byy.meterreading.common.exception.ResourceConflictException;
 import com.byy.meterreading.common.exception.ResourceNotFoundException;
 import com.byy.meterreading.common.exception.VersionConflictException;
@@ -36,6 +37,13 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(DatabaseBusyException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public Result<Void> handleDatabaseBusy(DatabaseBusyException exception, HttpServletRequest request) {
+        logBusinessException(request, HttpStatus.SERVICE_UNAVAILABLE, exception);
+        return Result.failure(ApiErrorCode.UPSTREAM_ERROR, exception.getMessage());
+    }
 
     private static final Logger log =
             LoggerFactory.getLogger(GlobalExceptionHandler.class);

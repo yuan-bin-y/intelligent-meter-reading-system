@@ -37,7 +37,6 @@ import java.util.Map;
  * 表具管理业务实现。
  */
 @Service
-@Transactional
 public class MeterServiceImpl implements MeterService {
 
     private static final Map<MeterType, String> METER_UNITS = Map.of(
@@ -67,6 +66,7 @@ public class MeterServiceImpl implements MeterService {
      * 新增表具，并通过预查询和数据库唯一索引共同保证表具编号唯一。
      */
     @Override
+    @Transactional
     public CreateMeterVO createMeter(
             Long operatorId,
             CreateMeterDTO createMeterDTO
@@ -200,6 +200,7 @@ public class MeterServiceImpl implements MeterService {
      * 修改表具基础资料，使用版本号条件保证并发更新不会互相覆盖。
      */
     @Override
+    @Transactional
     public MeterVersionVO updateMeter(
             Long operatorId,
             Long meterId,
@@ -261,6 +262,7 @@ public class MeterServiceImpl implements MeterService {
      * 校验生命周期流转后，按版本号原子更新表具状态。
      */
     @Override
+    @Transactional
     public MeterVersionVO updateMeterStatus(
             Long operatorId,
             Long meterId,
@@ -310,6 +312,7 @@ public class MeterServiceImpl implements MeterService {
      * 表具必须停用，并解除居民和设备绑定后才能逻辑删除。
      */
     @Override
+    @Transactional
     public void deleteMeter(
             Long operatorId,
             Long meterId,

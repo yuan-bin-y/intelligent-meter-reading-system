@@ -18,6 +18,8 @@ public class BusinessCacheProperties {
     private Duration ttlJitter = Duration.ofSeconds(15);
     private Duration nullTtl = Duration.ofSeconds(45);
     private Duration lockWait = Duration.ofSeconds(1);
+    private Duration loadTimeout = Duration.ofSeconds(5);
+    private int loadConcurrency = 8;
 
     @PostConstruct
     void validate() {
@@ -25,6 +27,10 @@ public class BusinessCacheProperties {
         requireNotNegative(ttlJitter, "BUSINESS_CACHE_TTL_JITTER");
         requirePositive(nullTtl, "BUSINESS_CACHE_NULL_TTL");
         requireNotNegative(lockWait, "BUSINESS_CACHE_LOCK_WAIT");
+        requirePositive(loadTimeout, "BUSINESS_CACHE_LOAD_TIMEOUT");
+        if (loadConcurrency < 1 || loadConcurrency > 64) {
+            throw new IllegalStateException("BUSINESS_CACHE_LOAD_CONCURRENCY必须在1至64之间");
+        }
     }
 
     private void requirePositive(Duration value, String name) {
@@ -77,6 +83,22 @@ public class BusinessCacheProperties {
 
     public void setLockWait(Duration lockWait) {
         this.lockWait = lockWait;
+    }
+
+    public Duration getLoadTimeout() {
+        return loadTimeout;
+    }
+
+    public void setLoadTimeout(Duration loadTimeout) {
+        this.loadTimeout = loadTimeout;
+    }
+
+    public int getLoadConcurrency() {
+        return loadConcurrency;
+    }
+
+    public void setLoadConcurrency(int loadConcurrency) {
+        this.loadConcurrency = loadConcurrency;
     }
 
 }

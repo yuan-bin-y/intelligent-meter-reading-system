@@ -22,6 +22,16 @@
 
 表具和设备的更新与缓存失效任务在同一个MySQL事务中提交；提交后立即尝试失效，失败由 `redis_maintenance_task` 重试。默认缓存TTL为60秒，加0至15秒抖动；配置可以按允许的陈旧时间调整。此处仍是最终一致缓存，故障期间可能读到TTL以内的旧详情。设备认证与凭证版本读取直接查询MySQL，不用详情缓存做安全判断。
 
+## Redis故障时限制数据库回源
+
+详情和角色缓存未命中、Redis故障、取锁失败、关闭缓存，统一经过 `DatabaseLoadGate`。同一JVM内同一Key共享一次加载；不同Key最多8次同时加载，无等待队列。满额直接返回HTTP503，业务码 `UPSTREAM_ERROR`；默认5秒请求超时。底层SQL若尚未结束，仍占用原槽位，不能因请求已超时就放行更多SQL；超时任务不会再填充缓存。
+
+回源运行在线程池内，保留traceId，避免继承请求事务里的旧快照。写事务仅加在修改方法，缓存命中不会提前占用数据库连接。默认MyBatis语句超时3秒，连接池等待2秒，驱动socket超时6秒。慢报表需要单独设置更合适的语句超时，不能通过无限放大缓存回源并发来解决。
+
+并发额度是每个Java进程的上限；N个副本最多N×8个加载，应结合MySQL容量、连接池12及写请求余量调整 `BUSINESS_CACHE_LOAD_CONCURRENCY`。这项保护覆盖业务缓存回源，不能替代所有分页接口的限流或数据库容量规划。
+
+Prometheus新增 `business_cache_load_active`、`business_cache_load_inflight`、`business_cache_load_rejected_total`、`business_cache_load_timeout_total` 和 `business_cache_load_coalesced_total`。Redis读失败后短暂跳过重复探测，减少故障期间日志与连接风暴。
+
 ## 运行隔离测试
 
 测试容器与日常业务容器分开，不读取本地配置、OSS、JWT密钥或模型文件：
