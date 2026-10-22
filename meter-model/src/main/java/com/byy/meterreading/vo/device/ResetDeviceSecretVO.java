@@ -12,6 +12,8 @@ public record ResetDeviceSecretVO(
         String deviceSecret,
         Integer credentialVersion,
         Integer version,
-        LocalDateTime rotatedAt
+        LocalDateTime rotatedAt,
+        String requestId,
+        boolean replayed
 ) {
 }

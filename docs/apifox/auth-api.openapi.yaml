@@ -6895,8 +6895,12 @@ components:
 
     ResetDeviceSecretDTO:
       type: object
-      required: [version]
+      required: [version, requestId]
       properties:
+        requestId:
+          type: string
+          format: uuid
+          description: 每次新轮换生成UUID；网络重试必须复用原UUID和version，不会重复轮换
         version:
           type: integer
           minimum: 0
@@ -6907,11 +6911,18 @@ components:
       required:
         - deviceId
         - deviceNo
-        - deviceSecret
+        - requestId
+        - replayed
         - credentialVersion
         - version
         - rotatedAt
       properties:
+        requestId:
+          type: string
+          format: uuid
+        replayed:
+          type: boolean
+          description: true表示此前已提交，deviceSecret为null；若未保存首次密钥，需用最新version和新UUID另行轮换
         deviceId:
           type: integer
           format: int64
@@ -6919,7 +6930,8 @@ components:
           type: string
         deviceSecret:
           type: string
-          description: 新生成的设备明文密钥，仅在本次响应中返回一次
+          nullable: true
+          description: 新明文密钥仅首次返回；不保存可恢复的明文，重放响应为null
         credentialVersion:
           type: integer
           minimum: 1

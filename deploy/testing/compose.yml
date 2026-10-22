@@ -1,0 +1,33 @@
+name: meter-hardening-tests
+services:
+  mysql:
+    image: mysql:8.0.46
+    environment:
+      MYSQL_ROOT_PASSWORD: test-only-root
+      MYSQL_DATABASE: meter_hardening
+    ports: ["127.0.0.1:13306:3306"]
+    command: ["--innodb-lock-wait-timeout=5"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-ptest-only-root"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+  redis:
+    image: redis:7.4.2
+    ports: ["127.0.0.1:16389:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  rabbitmq:
+    image: rabbitmq:4.3.6-management
+    environment:
+      RABBITMQ_DEFAULT_USER: test
+      RABBITMQ_DEFAULT_PASS: test-only-password
+    ports: ["127.0.0.1:15680:5672", "127.0.0.1:15681:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

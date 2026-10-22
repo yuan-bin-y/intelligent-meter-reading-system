@@ -137,7 +137,7 @@ public class DeviceAlarmServiceImpl implements DeviceAlarmService {
         // 3. 逐台检查 Redis 心跳，并根据“在线状态 + 现有告警”执行状态流转。
         for (Device device : enabledDevices) {
             DeviceAlarm openAlarm = openAlarmByDevice.get(device.getId());
-            boolean online = deviceHeartbeatService.isOnline(device.getId());
+            boolean online = deviceHeartbeatService.isOnline(device.getId(), device.getCredentialVersion());
 
             if (online) {
                 // 设备恢复心跳且存在未恢复告警时，将该告警更新为 RECOVERED。

@@ -15,6 +15,7 @@ import com.byy.meterreading.dto.device.DeviceVersionDTO;
 import com.byy.meterreading.dto.device.ResetDeviceSecretDTO;
 import com.byy.meterreading.dto.device.UpdateDeviceDTO;
 import com.byy.meterreading.mapper.DeviceMapper;
+import com.byy.meterreading.maintenance.RedisMaintenanceQueue;
 import com.byy.meterreading.model.Device;
 import com.byy.meterreading.model.enums.DeviceStatus;
 import com.byy.meterreading.model.enums.DeviceType;
@@ -31,6 +32,8 @@ import com.byy.meterreading.vo.device.DeviceVersionVO;
 import com.byy.meterreading.vo.device.ResetDeviceSecretVO;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -38,6 +41,7 @@ import java.time.LocalDateTime;
  * 采集设备档案管理业务实现。
  */
 @Service
+@Transactional
 public class DeviceServiceImpl implements DeviceService {
 
     private static final int INITIAL_CREDENTIAL_VERSION = 1;
@@ -47,19 +51,25 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceCredentialService deviceCredentialService;
     private final DeviceHeartbeatService deviceHeartbeatService;
     private final BusinessCacheService businessCacheService;
+    private final RedisMaintenanceQueue maintenanceQueue;
+    private final JdbcTemplate jdbc;
 
     public DeviceServiceImpl(
             DeviceMapper deviceMapper,
             DeviceMeterService deviceMeterService,
             DeviceCredentialService deviceCredentialService,
             DeviceHeartbeatService deviceHeartbeatService,
-            BusinessCacheService businessCacheService
+            BusinessCacheService businessCacheService,
+            RedisMaintenanceQueue maintenanceQueue,
+            JdbcTemplate jdbc
     ) {
         this.deviceMapper = deviceMapper;
         this.deviceMeterService = deviceMeterService;
         this.deviceCredentialService = deviceCredentialService;
         this.deviceHeartbeatService = deviceHeartbeatService;
         this.businessCacheService = businessCacheService;
+        this.maintenanceQueue = maintenanceQueue;
+        this.jdbc = jdbc;
     }
 
     /**
@@ -164,7 +174,8 @@ public class DeviceServiceImpl implements DeviceService {
         return new DeviceRuntimeStatusVO(
                 device.getId(),
                 device.getDeviceNo(),
-                deviceHeartbeatService.isOnline(device.getId())
+                Integer.valueOf(DeviceStatus.ENABLED.getCode()).equals(device.getStatus())
+                        && deviceHeartbeatService.isOnline(device.getId(), device.getCredentialVersion())
         );
     }
 
@@ -179,7 +190,26 @@ public class DeviceServiceImpl implements DeviceService {
             ResetDeviceSecretDTO resetDTO
     ) {
         requireOperatorId(operatorId);
-        Device currentDevice = requireDevice(deviceId);
+        requirePositiveDeviceId(deviceId);
+        String requestId = java.util.UUID.fromString(resetDTO.requestId()).toString();
+        Device currentDevice = deviceMapper.selectForUpdate(deviceId);
+        if (currentDevice == null) {
+            throw new ResourceNotFoundException("设备不存在");
+        }
+        var previous = jdbc.query("""
+                SELECT operator_id, expected_version, credential_version, device_version, rotated_at
+                FROM device_credential_rotation WHERE device_id = ? AND request_id = ?
+                """, (rs, row) -> {
+                    if (rs.getLong(1) != operatorId || rs.getInt(2) != resetDTO.version()) {
+                        throw new ResourceConflictException("同一请求ID不能用于不同的轮换操作");
+                    }
+                    return new ResetDeviceSecretVO(deviceId, currentDevice.getDeviceNo(), null,
+                            rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toLocalDateTime(), requestId, true);
+                }, deviceId, requestId);
+        if (!previous.isEmpty()) {
+            // 只重放提交结果，不再次轮换，也不在数据库保存可恢复的明文密钥。
+            return previous.get(0);
+        }
         requireExpectedVersion(currentDevice, resetDTO.version());
 
         DeviceCredentialService.GeneratedCredential credential =
@@ -204,8 +234,13 @@ public class DeviceServiceImpl implements DeviceService {
         ensureUpdated(updatedRows, deviceId);
         businessCacheService.evictDeviceDetailAfterCommit(deviceId);
 
-        // 旧心跳由旧密钥认证产生，重置密钥后必须立即失效。
-        deviceHeartbeatService.clearHeartbeat(deviceId);
+        jdbc.update("""
+                INSERT INTO device_credential_rotation
+                  (device_id, request_id, operator_id, expected_version, credential_version, device_version, rotated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, deviceId, requestId, operatorId, resetDTO.version(), nextCredentialVersion,
+                resetDTO.version() + 1, rotatedAt);
+        maintenanceQueue.heartbeatBeforeVersion(deviceId, nextCredentialVersion);
 
         return new ResetDeviceSecretVO(
                 deviceId,
@@ -213,7 +248,9 @@ public class DeviceServiceImpl implements DeviceService {
                 credential.rawSecret(),
                 nextCredentialVersion,
                 resetDTO.version() + 1,
-                rotatedAt
+                rotatedAt,
+                requestId,
+                false
         );
     }
 
@@ -281,8 +318,6 @@ public class DeviceServiceImpl implements DeviceService {
                 versionDTO.version(),
                 DeviceStatus.DISABLED
         );
-        // 设备停用后不能继续保持在线状态。
-        deviceHeartbeatService.clearHeartbeat(deviceId);
         return result;
     }
 
@@ -322,8 +357,7 @@ public class DeviceServiceImpl implements DeviceService {
         ensureUpdated(updatedRows, deviceId);
         businessCacheService.evictDeviceDetailAfterCommit(deviceId);
 
-        // 删除设备后同步清理 Redis 中残留的运行状态。
-        deviceHeartbeatService.clearHeartbeat(deviceId);
+        maintenanceQueue.heartbeatBeforeVersion(deviceId, currentDevice.getCredentialVersion() + 1);
     }
 
     private DeviceVersionVO updateStatus(
@@ -345,6 +379,8 @@ public class DeviceServiceImpl implements DeviceService {
         LambdaUpdateWrapper<Device> updateWrapper =
                 Wrappers.<Device>lambdaUpdate()
                         .set(Device::getStatus, targetStatus.getCode())
+                        .set(targetStatus == DeviceStatus.DISABLED, Device::getCredentialVersion,
+                                currentDevice.getCredentialVersion() + 1)
                         .set(Device::getUpdatedBy, operatorId)
                         .setSql("version = version + 1")
                         .eq(Device::getId, deviceId)
@@ -352,6 +388,9 @@ public class DeviceServiceImpl implements DeviceService {
         int updatedRows = deviceMapper.update(null, updateWrapper);
         ensureUpdated(updatedRows, deviceId);
         businessCacheService.evictDeviceDetailAfterCommit(deviceId);
+        if (targetStatus == DeviceStatus.DISABLED) {
+            maintenanceQueue.heartbeatBeforeVersion(deviceId, currentDevice.getCredentialVersion() + 1);
+        }
         return new DeviceVersionVO(deviceId, expectedVersion + 1);
     }
 

@@ -22,6 +22,8 @@ public class DeviceHeartbeatServiceImpl implements DeviceHeartbeatService {
      */
     private static final DefaultRedisScript<Long> RECORD_HEARTBEAT_SCRIPT =
             new DefaultRedisScript<>("""
+                    local current = redis.call('HGET', KEYS[1], 'credentialVersion')
+                    if current and tonumber(current) > tonumber(ARGV[3]) then return 0 end
                     redis.call('HSET', KEYS[1], 'deviceId', ARGV[1])
                     redis.call('HSET', KEYS[1], 'deviceNo', ARGV[2])
                     redis.call('HSET', KEYS[1], 'credentialVersion', ARGV[3])
@@ -61,22 +63,28 @@ public class DeviceHeartbeatServiceImpl implements DeviceHeartbeatService {
     }
 
     @Override
-    public boolean isOnline(Long deviceId) {
+    public boolean isOnline(Long deviceId, Integer credentialVersion) {
         if (deviceId == null) {
             throw new IllegalArgumentException("deviceId 不能为空");
         }
 
-        Boolean exists = redisTemplate.hasKey(heartbeatKey(deviceId));
-        return Boolean.TRUE.equals(exists);
+        Object current = redisTemplate.opsForHash().get(heartbeatKey(deviceId), "credentialVersion");
+        return credentialVersion != null && credentialVersion.toString().equals(current);
     }
 
     @Override
-    public void clearHeartbeat(Long deviceId) {
+    public void clearHeartbeatBeforeVersion(Long deviceId, int credentialVersion) {
         if (deviceId == null) {
             throw new IllegalArgumentException("deviceId 不能为空");
         }
 
-        redisTemplate.delete(heartbeatKey(deviceId));
+        redisTemplate.execute(new DefaultRedisScript<>("""
+                local current = redis.call('HGET', KEYS[1], 'credentialVersion')
+                if not current or tonumber(current) < tonumber(ARGV[1]) then
+                    return redis.call('DEL', KEYS[1])
+                end
+                return 0
+                """, Long.class), List.of(heartbeatKey(deviceId)), Integer.toString(credentialVersion));
     }
 
     private void requireArguments(
