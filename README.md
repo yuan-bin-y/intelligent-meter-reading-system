@@ -55,9 +55,9 @@ npm run dev
 
 ## 开发检查与测试
 
-测试源码、Mock/OpenCV 基线和本机配置不随 Git 提交，本地文件继续保留。正式识别链路使用 YOLO + PaddleOCR；Java AI Worker 仍属于正式服务。
+Java 核心业务测试随仓库交付，不需要真实模型或 OSS。密码哈希生成工具、前端、Python 模型实验、本机配置和模型样本继续在本机维护。正式识别链路使用 YOLO + PaddleOCR；Java AI Worker 仍属于正式服务。
 
-Java 使用 JDK 17，在根目录执行 `mvn -DskipTests verify`，运行 Checkstyle、SpotBugs 和构建。规则放在 `config/`。本机保留测试源码时，可以执行 `mvn verify` 运行测试并生成 JaCoCo 覆盖率报告。
+Java 使用 JDK 17，在根目录执行 `mvn verify`，运行业务测试、Checkstyle、SpotBugs 和构建，并生成 JaCoCo 覆盖率报告。规则放在 `config/`。
 
 本机保留前端源码时，使用 Node.js 22.13 或更新的受支持版本，在 `meter-web` 执行：
 
@@ -78,6 +78,6 @@ ruff format --check app
 
 本机保留 `tests/`、`pytest.ini` 和模拟识别器时，仍可执行 `python -m pytest`。真实 PaddleOCR 测试通过 `AI_INTEGRATION_IMAGE` 指定图片，再执行 `python -m pytest -m integration`。这些测试文件不包含在新拉取的正式源码中。
 
-GitHub Actions 配置位于 `.github/workflows/ci.yml`，推送、PR 和手动触发时执行 Java 构建与静态检查、Python 静态检查。CI 不依赖本地前端、测试文件和实验识别器。
+GitHub Actions 配置位于 `.github/workflows/ci.yml`，推送、PR 和手动触发时执行 Java 核心测试、构建与静态检查、Python 静态检查。CI 不依赖本地前端和实验识别器。
 
 正式识别由 `recognizers/paddle_ocr.py` 编排，`pipeline/detect.py` 负责显示区定位，`recognizers/ocr_output.py` 适配 PaddleOCR 输出。OpenCV 数字模板、指针和 Mock 实验代码只保留在本机，按需加载。

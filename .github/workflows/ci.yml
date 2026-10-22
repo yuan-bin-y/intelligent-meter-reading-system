@@ -23,13 +23,15 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
-      - name: Checkstyle, SpotBugs and build
-        run: mvn --batch-mode --no-transfer-progress -DskipTests verify
+      - name: Tests, Checkstyle, SpotBugs and build
+        run: mvn --batch-mode --no-transfer-progress verify
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: java-reports
           path: |
+            **/target/surefire-reports/
+            **/target/site/jacoco/
             **/target/spotbugsXml.xml
             **/target/checkstyle-result.xml
 

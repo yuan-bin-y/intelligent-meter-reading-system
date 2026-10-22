@@ -65,8 +65,8 @@ Desktop.ini
 /logs/
 *.log
 
-### 本地测试，不随正式源码提交 ###
-**/src/test/
+### 本地辅助工具和模型测试 ###
+/meter-api/src/test/java/com/byy/meterreading/auth/PasswordHashGeneratorTest.java
 /meter-ai-service/tests/
 /meter-ai-service/pytest.ini
 /meter-ai-service/.coverage*
