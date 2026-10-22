@@ -27,7 +27,7 @@ import java.util.function.Supplier;
  * 使用 Cache Aside 模式管理低频修改、高频读取的业务详情缓存。
  *
  * <p>空值标记防止不存在的 ID 持续查询 MySQL，随机 TTL 降低同时过期风险，
- * Redisson 分布式锁保证多实例中只有一个请求负责重建同一个热点缓存。</p>
+ * Redisson锁协调缓存重建，原子令牌校验防止过期持有者覆盖新值；回源另有限额。</p>
  */
 @Service
 public class BusinessCacheService {
@@ -157,7 +157,10 @@ public class BusinessCacheService {
     private <T> T rebuild(String cacheKey, JavaType resultType, Supplier<T> loader) {
         RFencedLock lock;
         try {
-            lock = redissonClient.getFencedLock(LOCK_PREFIX + cacheKey);
+            // 固定1024个锁桶，避免不存在的随机ID累积永久fencing计数Key。
+            // 同桶令牌仍单调递增，碰撞只减少并发度，不放宽写入校验。
+            lock = redissonClient.getFencedLock(LOCK_PREFIX + "{stripe-"
+                    + Math.floorMod(cacheKey.hashCode(), 1024) + "}");
         } catch (RuntimeException exception) {
             log.warn("获取业务缓存重建锁失败，已回退 MySQL，key={}",
                     cacheKey, exception);

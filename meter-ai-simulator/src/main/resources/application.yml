@@ -16,9 +16,9 @@ spring:
     listener:
       simple:
         acknowledge-mode: manual
-        prefetch: 1
-        concurrency: 1
-        max-concurrency: 1
+        prefetch: ${AI_WORKER_PREFETCH:1}
+        concurrency: ${AI_WORKER_CONCURRENCY:1}
+        max-concurrency: ${AI_WORKER_MAX_CONCURRENCY:1}
         default-requeue-rejected: false
 
 logging:

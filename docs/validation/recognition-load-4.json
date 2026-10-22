@@ -1,0 +1,140 @@
+{
+  "scenario": "HTTP create -> MySQL Outbox -> RabbitMQ quorum -> real Java Worker -> HMAC HTTP callback -> MySQL result",
+  "recognizer": "SUCCESS test engine with 50ms controlled delay; excludes OSS and real model inference",
+  "timestamp": "2026-10-22T13:38:49+08:00",
+  "tasks": 60,
+  "httpConcurrency": 8,
+  "workerConcurrency": 4,
+  "prefetch": 1,
+  "succeeded": 60,
+  "failedHttp": 0,
+  "readingResultRows": 60,
+  "pendingReviewTasks": 60,
+  "elapsedSeconds": 11.703,
+  "throughputTasksPerSecond": 5.127,
+  "httpSubmitSeconds": 1.078,
+  "httpP95Ms": 281.0,
+  "completionP50Ms": 5109.0,
+  "completionP95Ms": 10579.0,
+  "observedPeakReady": 0,
+  "observedPeakDbActive": 12.0,
+  "samplingNote": "completion includes polling delay; queue metrics may be stale; local smoke load, not production QPS",
+  "passed": true,
+  "failures": [],
+  "samples": [
+    {
+      "elapsedSeconds": 1.094,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 3.063,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 3.625,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 12.0
+    },
+    {
+      "elapsedSeconds": 4.203,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 12.0
+    },
+    {
+      "elapsedSeconds": 4.703,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 5.25,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 5.781,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 6.328,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 6.781,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 7.203,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 7.719,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 8.25,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 8.703,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 9.156,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 9.672,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 10.156,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 10.625,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 11.078,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 11.563,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    }
+  ]
+}

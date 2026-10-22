@@ -19,15 +19,15 @@ public interface DeviceHeartbeatService {
     );
 
     /**
-     * 判断设备当前是否仍有有效的 Redis 心跳记录。
+     * 核对心跳版本与数据库中的当前凭证版本。
      *
      * @param deviceId 设备数据库主键
-     * @return 心跳 Key 存在时返回 true，否则返回 false
+     * @return 心跳未过期且凭证版本一致时返回true
      */
     boolean isOnline(Long deviceId, Integer credentialVersion);
 
     /**
-     * 主动删除设备心跳，供重置密钥、停用和删除设备时调用。
+     * 清理低于指定版本的心跳；后台重试不能删除新凭证产生的心跳。
      *
      * @param deviceId 设备数据库主键
      */

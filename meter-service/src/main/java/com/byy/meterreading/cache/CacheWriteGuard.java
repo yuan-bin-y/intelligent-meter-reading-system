@@ -16,7 +16,7 @@ public class CacheWriteGuard {
             if old and tonumber(old) >= tonumber(ARGV[1]) then return nil end
             local generation = redis.call('HGET', KEYS[1], 'generation') or ARGV[2]
             redis.call('HSET', KEYS[1], 'fence', ARGV[1], 'generation', generation)
-            redis.call('EXPIRE', KEYS[1], 86400)
+            redis.call('EXPIRE', KEYS[1], 300)
             return generation
             """, String.class);
     private static final DefaultRedisScript<Long> WRITE = new DefaultRedisScript<>("""
@@ -27,7 +27,7 @@ public class CacheWriteGuard {
             """, Long.class);
     private static final DefaultRedisScript<Long> INVALIDATE = new DefaultRedisScript<>("""
             redis.call('HSET', KEYS[2], 'generation', ARGV[1])
-            redis.call('EXPIRE', KEYS[2], 86400)
+            redis.call('EXPIRE', KEYS[2], 300)
             return redis.call('DEL', KEYS[1])
             """, Long.class);
     private final StringRedisTemplate redis;

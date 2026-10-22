@@ -181,8 +181,8 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 原子更新密钥摘要及两个版本号，清理旧凭证产生的心跳；
-     * 明文密钥只通过本次响应返回。
+     * 在同一事务内保存新凭证、请求结果与心跳清理任务；Redis由后台重试清理。
+     * 同一请求ID只轮换一次，明文仅首次成功响应返回。
      */
     @Override
     @Transactional

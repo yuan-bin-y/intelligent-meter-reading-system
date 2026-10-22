@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
 /**
- * 设备档案 Mapper，当前全部数据库操作使用 MyBatis-Plus。
+ * 设备档案 Mapper；常规CRUD使用MyBatis-Plus，密钥轮换使用行锁查询。
  */
 @Mapper
 public interface DeviceMapper extends BaseMapper<Device> {

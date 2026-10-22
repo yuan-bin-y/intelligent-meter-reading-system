@@ -1,0 +1,284 @@
+{
+  "scenario": "HTTP create -> MySQL Outbox -> RabbitMQ quorum -> real Java Worker -> HMAC HTTP callback -> MySQL result",
+  "recognizer": "SUCCESS test engine with 50ms controlled delay; excludes OSS and real model inference",
+  "timestamp": "2026-10-22T13:37:11+08:00",
+  "tasks": 60,
+  "httpConcurrency": 8,
+  "workerConcurrency": 1,
+  "prefetch": 1,
+  "succeeded": 60,
+  "failedHttp": 0,
+  "readingResultRows": 60,
+  "pendingReviewTasks": 60,
+  "elapsedSeconds": 33.453,
+  "throughputTasksPerSecond": 1.794,
+  "httpSubmitSeconds": 4.641,
+  "httpP95Ms": 969.0,
+  "completionP50Ms": 14765.0,
+  "completionP95Ms": 28016.0,
+  "observedPeakReady": 28,
+  "observedPeakDbActive": 3.0,
+  "samplingNote": "completion includes polling delay; queue metrics may be stale; local smoke load, not production QPS",
+  "passed": true,
+  "failures": [],
+  "samples": [
+    {
+      "elapsedSeconds": 4.687,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 9.359,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 9.937,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 10.531,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 11.125,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 11.75,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 12.375,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 13.0,
+      "ready": 12,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 13.656,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 14.281,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 14.812,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 15.359,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 15.906,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 16.469,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 3.0
+    },
+    {
+      "elapsedSeconds": 17.031,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 17.578,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 18.109,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 18.672,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 19.219,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 19.812,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 20.391,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 20.953,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 21.531,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 22.125,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 22.703,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 23.266,
+      "ready": 28,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 23.844,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 24.437,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 25.031,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 25.625,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 26.203,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 26.75,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 27.312,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 27.937,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 28.5,
+      "ready": 14,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 29.125,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 29.75,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 30.344,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 30.969,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 31.531,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 32.078,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 32.641,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 33.187,
+      "ready": 7,
+      "unacked": 1,
+      "dbActive": 0.0
+    }
+  ]
+}

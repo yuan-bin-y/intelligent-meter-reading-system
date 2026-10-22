@@ -985,6 +985,33 @@
       ],
       "title": "WARN / ERROR 日志速率",
       "type": "timeseries"
+    },
+    {
+      "id": 13,
+      "title": "Redis清理与Outbox积压",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {"expr": "redis_maintenance_pending{application=~\"$application\"}", "legendFormat": "Redis清理待处理", "refId": "A"},
+        {"expr": "recognition_outbox_pending{application=~\"$application\"}", "legendFormat": "Outbox待投递", "refId": "B"},
+        {"expr": "recognition_outbox_failed{application=~\"$application\"}", "legendFormat": "Outbox最终失败", "refId": "C"}
+      ],
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}}
+    },
+    {
+      "id": 14,
+      "title": "数据库回源拒绝与超时",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "targets": [
+        {"expr": "rate(business_cache_load_rejected_total{application=~\"$application\"}[5m])", "legendFormat": "容量拒绝", "refId": "A"},
+        {"expr": "rate(business_cache_load_timeout_total{application=~\"$application\"}[5m])", "legendFormat": "请求超时", "refId": "B"}
+      ],
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}}
     }
   ],
   "refresh": "10s",

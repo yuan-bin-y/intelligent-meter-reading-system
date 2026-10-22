@@ -1,0 +1,81 @@
+{
+  "scenario": "HTTP create -> MySQL Outbox -> RabbitMQ quorum -> real Java Worker -> HMAC HTTP callback -> MySQL result",
+  "recognizer": "SUCCESS test engine with 50ms controlled delay; excludes OSS and real model inference",
+  "timestamp": "2026-10-22T17:18:13+08:00",
+  "tasks": 60,
+  "httpConcurrency": 8,
+  "workerConcurrency": 2,
+  "prefetch": 1,
+  "deviceRotationAndCacheSmokePassed": true,
+  "succeeded": 60,
+  "failedHttp": 0,
+  "readingResultRows": 60,
+  "pendingReviewTasks": 60,
+  "elapsedSeconds": 10.734,
+  "throughputTasksPerSecond": 5.59,
+  "httpSubmitSeconds": 1.203,
+  "httpP95Ms": 234.0,
+  "completionP50Ms": 6953.0,
+  "completionP95Ms": 9094.0,
+  "observedPeakReady": 11,
+  "observedPeakDbActive": 2.0,
+  "samplingNote": "completion includes polling delay; queue metrics may be stale; local smoke load, not production QPS",
+  "passed": true,
+  "failures": [],
+  "samples": [
+    {
+      "elapsedSeconds": 1.219,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 6.953,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 0.0
+    },
+    {
+      "elapsedSeconds": 7.5,
+      "ready": 0,
+      "unacked": 0,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 8.047,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 2.0
+    },
+    {
+      "elapsedSeconds": 8.594,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 9.078,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 9.594,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 10.078,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 1.0
+    },
+    {
+      "elapsedSeconds": 10.562,
+      "ready": 11,
+      "unacked": 2,
+      "dbActive": 1.0
+    }
+  ]
+}

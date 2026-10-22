@@ -78,6 +78,6 @@ ruff format --check app
 
 本机保留 `tests/`、`pytest.ini` 和模拟识别器时，仍可执行 `python -m pytest`。真实 PaddleOCR 测试通过 `AI_INTEGRATION_IMAGE` 指定图片，再执行 `python -m pytest -m integration`。这些测试文件不包含在新拉取的正式源码中。
 
-GitHub Actions 配置位于 `.github/workflows/ci.yml`，推送、PR 和手动触发时执行 Java 核心测试、构建与静态检查、Python 静态检查。CI 不依赖本地前端和实验识别器。
+GitHub Actions 配置位于 `.github/workflows/ci.yml`，推送、PR 和手动触发时执行 Java 单元测试、隔离 MySQL/Redis/RabbitMQ 故障回归、构建与静态检查、Python 静态检查。CI 不依赖本地前端和实验识别器。密钥轮换、缓存一致性、数据库回源保护及队列升级步骤见[可靠性说明](docs/hardening.md)。
 
 正式识别由 `recognizers/paddle_ocr.py` 编排，`pipeline/detect.py` 负责显示区定位，`recognizers/ocr_output.py` 适配 PaddleOCR 输出。OpenCV 数字模板、指针和 Mock 实验代码只保留在本机，按需加载。

@@ -18,7 +18,7 @@
 
 ## 缓存写入和失效
 
-详情缓存改用v2 Key，旧Key自行过期。Redisson `RFencedLock` 不再指定固定租约，采用看门狗续期；获得单调递增令牌后登记本次加载。Lua写入同时核对令牌和失效代次，旧持有者不能覆盖新持有者的结果。业务更新后，失效操作原子更换代次并删除值，更新前启动的查询不能重新填入旧值。元数据丢失时拒绝旧加载结果。
+详情缓存改用v2 Key，旧Key自行过期。Redisson `RFencedLock` 不再指定固定租约，采用看门狗续期；获得单调递增令牌后登记本次加载。Lua写入同时核对令牌和失效代次，旧持有者不能覆盖新持有者的结果。业务更新后，失效操作原子更换代次并删除值，更新前启动的查询不能重新填入旧值。元数据丢失时拒绝旧加载结果。锁限制为1024个桶，避免随机ID持续产生永久计数Key；哈希碰撞只使不同Key的重建暂时串行。每个缓存的校验元数据5分钟过期，过期后拒绝旧写入。
 
 表具和设备的更新与缓存失效任务在同一个MySQL事务中提交；提交后立即尝试失效，失败由 `redis_maintenance_task` 重试。默认缓存TTL为60秒，加0至15秒抖动；配置可以按允许的陈旧时间调整。此处仍是最终一致缓存，故障期间可能读到TTL以内的旧详情。设备认证与凭证版本读取直接查询MySQL，不用详情缓存做安全判断。
 
@@ -59,5 +59,30 @@ mvn --batch-mode --no-transfer-progress verify
 ```
 
 MySQL 使用 `13306/meter_hardening`，Redis 使用16389，RabbitMQ 使用15680（管理页面15681）。账号仅供本机隔离测试，不能用于真实部署。默认不设置 `METER_IT` 时仍执行所有不依赖外部服务的单元测试。
+
+需要实际重启隔离Broker时，额外设置 `$env:METER_IT_BROKER_RESTART='true'` 再运行测试。只接受固定测试容器，或CI传入且发布15680端口的临时service容器ID；测试不会重启日常业务Broker。CI已启用隔离服务与该故障回归。测试环境把Broker内部死信Confirm重试等待缩短为1秒；生产保留默认值，目标恢复后可能仍需等待下一轮内部重试。
+
+## 容量验收与扩容
+
+Windows上使用PowerShell 7、JDK17、Maven、Python3.12和Docker Desktop，运行：
+
+```powershell
+./scripts/run-recognition-load.ps1 -WorkerConcurrency 1 -Tasks 60 -Python python
+./scripts/run-recognition-load.ps1 -WorkerConcurrency 4 -Tasks 60 -Python python -SkipBuild
+```
+
+脚本安装固定版本的验收驱动，启动隔离容器和18070端口上的API/Worker，生成临时JWT及回调密钥，不读取本机OSS配置。报告保存在 `tmp/recognition-load-1.json` 等文件。脚本只关闭自己创建的Java进程，测试库保留供排查。镜像和依赖须能下载；这不依赖被Git忽略的前端或视觉模型。
+
+验收覆盖设备新增、详情缓存、轮换和重复请求，以及管理员创建识别任务、MySQL Outbox、Quorum消息、真实Java Worker、签名HTTP回调、抄表结果与待审核状态。图片元数据是隔离测试夹具，识别引擎使用50毫秒可控响应；不把结果当成OSS上传速度或真实模型吞吐。
+
+`AI_WORKER_CONCURRENCY`、`AI_WORKER_MAX_CONCURRENCY`、`AI_WORKER_PREFETCH` 已接入配置和Compose，max不能小于初始并发。也可用Compose的 `--scale meter-ai-worker=2` 增加Worker副本。默认仍为并发1、prefetch1；先观察模型延迟、队列积压、数据库连接等待和错误率，再逐步增加。真实模型可能先达到CPU/内存或推理并发上限，不能依据测试引擎吞吐直接扩大生产并发。
+
+单机Compose继续用于开发验收。生产高可用需要独立规划MySQL主备、Redis主从/Sentinel、RabbitMQ三节点及模型服务副本，同时验证故障转移；单机增加容器数量不能替代跨主机冗余。这次保留了当前单机部署范围。
+
+## 监控
+
+15秒采样Redis清理积压、Outbox积压/失败数与最老任务年龄；Prometheus抓取读取内存值，不直接执行SQL。Grafana增加对应积压和回源拒绝/超时曲线。5条Prometheus规则检测清理停滞、Outbox停滞、数据库回源饱和、采样失败和识别队列积压；RabbitMQ改抓 `/metrics/per-object` 以获得queue标签。部署后重新加载Prometheus配置，规则会显示在其Alerts页；发送短信/邮件仍需按实际值班渠道配置Alertmanager。
+
+实际验证记录见[本轮验收报告](validation/hardening-2026-10-22.md)。
 
 测试结束可运行 `docker compose -f deploy/testing/compose.yml down`；此配置不挂载业务数据卷。不要对日常部署执行删除数据卷操作。

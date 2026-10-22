@@ -1,0 +1,33 @@
+groups:
+  - name: meter-reliability
+    rules:
+      - alert: RedisMaintenanceStalled
+        expr: redis_maintenance_oldest_seconds > 120
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Redis清理任务持续积压，检查Redis和redis_maintenance_task"
+      - alert: RecognitionOutboxStalled
+        expr: recognition_outbox_oldest_seconds > 120 or recognition_outbox_failed > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "识别消息未完成投递，检查Outbox、路由和Broker容量"
+      - alert: DatabaseFallbackSaturated
+        expr: sum by (application) (rate(business_cache_load_rejected_total[5m])) > 1
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "数据库回源开始拒绝请求，检查Redis、慢SQL和连接池"
+      - alert: ReliabilitySamplingFailed
+        expr: reliability_sample_up == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "可靠性指标采样失败，检查数据库连接及应用日志"
+      - alert: RecognitionQueueBacklog
+        expr: rabbitmq_queue_messages_ready{queue="meter.recognition.v2.queue"} > 1000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "识别队列持续积压，核查模型响应时间后再扩Worker"

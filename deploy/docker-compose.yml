@@ -131,6 +131,9 @@ services:
       METER_BACKEND_BASE_URL: http://meter-api:8070
       AI_SERVICE_SECRET_BASE64: ${AI_SERVICE_SECRET_BASE64:?Set AI_SERVICE_SECRET_BASE64 in deploy/.env}
       AI_SIMULATOR_MODE: MODEL
+      AI_WORKER_PREFETCH: ${AI_WORKER_PREFETCH:-1}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-1}
+      AI_WORKER_MAX_CONCURRENCY: ${AI_WORKER_MAX_CONCURRENCY:-1}
       AI_MODEL_BASE_URL: http://meter-ai-service:8001
       OSS_ENDPOINT: ${OSS_ENDPOINT:?Set OSS_ENDPOINT in deploy/.env}
       OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:?Set OSS_ACCESS_KEY_ID in deploy/.env}
@@ -165,6 +168,7 @@ services:
       - "127.0.0.1:${PROMETHEUS_PORT:-9091}:9090"
     volumes:
       - ./prometheus/prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/reliability.rules.yml:/etc/prometheus/reliability.rules.yml:ro
       - prometheus-data:/prometheus
     depends_on:
       meter-api:

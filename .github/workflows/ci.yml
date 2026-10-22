@@ -16,6 +16,34 @@ jobs:
   java:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      METER_IT: "true"
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: test-only-root
+          MYSQL_DATABASE: meter_hardening
+        ports: ["13306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -ptest-only-root"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+      redis:
+        image: redis:7.4.2
+        ports: ["16389:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+      rabbitmq:
+        image: rabbitmq:4.3.6-management
+        env:
+          RABBITMQ_DEFAULT_USER: test
+          RABBITMQ_DEFAULT_PASS: test-only-password
+          RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit dead_letter_worker_publisher_confirm_timeout 1000"
+        ports: ["15680:5672"]
+        options: >-
+          --health-cmd="rabbitmq-diagnostics -q ping"
+          --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,8 +51,17 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
-      - name: Tests, Checkstyle, SpotBugs and build
+      - name: Unit tests, MySQL/Redis/RabbitMQ fault regressions and static checks
+        env:
+          METER_IT_BROKER_RESTART: "true"
+          METER_IT_RABBIT_CONTAINER: ${{ job.services.rabbitmq.id }}
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Validate reliability alert rules
+        run: >-
+          docker run --rm
+          -v "$PWD/deploy/monitoring/prometheus/reliability.rules.yml:/etc/prometheus/reliability.rules.yml:ro"
+          --entrypoint /bin/promtool prom/prometheus:v3.14.0
+          check rules /etc/prometheus/reliability.rules.yml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
